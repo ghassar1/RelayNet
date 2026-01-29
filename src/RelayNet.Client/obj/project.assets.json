@@ -1,11 +1,30 @@
 {
   "version": 3,
   "targets": {
-    "net10.0": {}
+    "net10.0": {
+      "RelayNet.Core/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v10.0",
+        "compile": {
+          "bin/placeholder/RelayNet.Core.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/RelayNet.Core.dll": {}
+        }
+      }
+    }
   },
-  "libraries": {},
+  "libraries": {
+    "RelayNet.Core/1.0.0": {
+      "type": "project",
+      "path": "../RelayNet.Core/RelayNet.Core.csproj",
+      "msbuildProject": "../RelayNet.Core/RelayNet.Core.csproj"
+    }
+  },
   "projectFileDependencyGroups": {
-    "net10.0": []
+    "net10.0": [
+      "RelayNet.Core >= 1.0.0"
+    ]
   },
   "packageFolders": {
     "C:\\Users\\Mohamed Ghassar\\.nuget\\packages\\": {},
@@ -38,7 +57,11 @@
       "frameworks": {
         "net10.0": {
           "targetAlias": "net10.0",
-          "projectReferences": {}
+          "projectReferences": {
+            "C:\\Users\\Mohamed Ghassar\\Desktop\\RelayNet\\src\\RelayNet.Core\\RelayNet.Core.csproj": {
+              "projectPath": "C:\\Users\\Mohamed Ghassar\\Desktop\\RelayNet\\src\\RelayNet.Core\\RelayNet.Core.csproj"
+            }
+          }
         }
       },
       "warningProperties": {
@@ -72,7 +95,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.101/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.102/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.CSharp": "(,4.7.32767]",
           "Microsoft.VisualBasic": "(,10.4.32767]",
