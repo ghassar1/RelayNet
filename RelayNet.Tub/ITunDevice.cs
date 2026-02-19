@@ -23,7 +23,7 @@ namespace RelayNet.Tun
         /// Reads raw IP packets from the OS (each item is a single packet)
         /// </summary>
         /// 
-        IAsyncEnumerable<ReadOnlyMemory<byte>> ReadPacketAsync([EnumeratorCancellation] CancellationToken ct);
+        IAsyncEnumerable<ReadOnlyMemory<byte>> ReadPacketAsync(CancellationToken ct);
 
         /// <summary>
         /// Writes a raw IP packet back to the OS.

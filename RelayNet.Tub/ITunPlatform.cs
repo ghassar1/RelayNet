@@ -13,8 +13,8 @@ namespace RelayNet.Tun
     /// </summary>
     public interface ITunPlatform
     {
-        Task<ITunDevice> CreateOrOpenAsync(TunConfig config, CancellationToken ct); 
+        Task<ITunDevice> CreateOrOpenAsync(TunConfig config, CancellationToken ct);
 
-        Task ConfigureAsync(TunConfig config, CancellationToken ct);
+        Task ConfigureAsync(ITunDevice device, TunConfig config, CancellationToken ct);
     }
 }

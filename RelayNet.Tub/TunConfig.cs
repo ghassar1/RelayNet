@@ -30,12 +30,17 @@ namespace RelayNet.Tun
         /// For split tunnel: routes to send via tunnel (CIDR strings). 
         /// Example ["10.10.0.0/16", "172.16.0.0/12"]. 
         /// 
-        public string[]? IncludedRourtes { get; init; }
+        public string[]? IncludedRoutes { get; init; }
 
         /// <summary>
         /// For full tunnel: routes that must not go through the tunnel (control-plane exclusions).
         /// Example: Entry relay IP, Directory IP. 
         /// 
         public string[]? ExcludedRoutes { get; init; }
+
+        public string TunnelType { get; init; } = "RelayNet"; // Wintun "tunnel type"
+
+        public uint SessionCapaciityBytes { get; init; } = 0x400000; // example: 4MB (pick later)
+
     }
 }
