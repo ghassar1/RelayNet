@@ -15,11 +15,11 @@ namespace RelayNet.Core.Services
             _identityPrivateKeyBytes = identityPrivateKeyBytes;
         }
 
-        public async Task<byte[]> HandleHandshakeAsync(RelayConnection conn, 
-            CancellationToken ct = default)
-        { 
-           //Recive Client's ephemeral public key
-           var clientKeyFrame = await conn.
-        }
+        //public async Task<byte[]> HandleHandshakeAsync(RelayConnection conn, 
+        //    CancellationToken ct = default)
+        //{ 
+        //   //Recive Client's ephemeral public key
+        //   var clientKeyFrame = await conn.
+        //}
     }
 }

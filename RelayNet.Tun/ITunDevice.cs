@@ -16,9 +16,12 @@ namespace RelayNet.Tun
 
         /// <summary>Start underlyning session handles/resources.</summary>
         ValueTask StartAsync (CancellationToken ct);
+        Task ConfigureAsync(CancellationToken ct);
         /// <summary>Stop session handles/resources.</summary>
         ValueTask StopAsync(CancellationToken ct);
 
+        Task EnsureKillSwitchRulesExistAsync(CancellationToken ct);
+        Task EnableKillSwitchAsync(CancellationToken ct);
         /// <summary>
         /// Reads raw IP packets from the OS (each item is a single packet)
         /// </summary>

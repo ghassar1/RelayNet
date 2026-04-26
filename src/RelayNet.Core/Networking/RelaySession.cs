@@ -7,7 +7,7 @@ namespace RelayNet.Core.Networking
     public sealed class RelaySession
     {
         public byte[] SessionKey { get; set; }
-        public ConnectionState State { get; set; } = ConnectionState.HandshakePending;
+        public ConnectionState State { get; set; } = ConnectionState.HandshakeComplete;
 
         // Optional additional session info
         public byte[]? ClientEphemeralPublicKey { get; set; }

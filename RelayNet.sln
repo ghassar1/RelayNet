@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.2.11415.280 d18.0
+VisualStudioVersion = 18.2.11415.280
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
@@ -13,7 +13,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelayNet.Relay", "src\Relay
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelayNet.Client", "src\RelayNet.Client\RelayNet.Client.csproj", "{66C12B4A-FC8F-4A5F-95D5-FA09C7BC2340}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelayNet.Tun", "RelayNet.Tub\RelayNet.Tun.csproj", "{06FAF775-E159-4679-8854-9E330AFE104A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelayNet.Tun", "RelayNet.Tun\RelayNet.Tun.csproj", "{06FAF775-E159-4679-8854-9E330AFE104A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelayNet.Tun.Test", "RelayNet.Tun.Test\RelayNet.Tun.Test.csproj", "{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -85,6 +87,18 @@ Global
 		{06FAF775-E159-4679-8854-9E330AFE104A}.Release|x64.Build.0 = Release|Any CPU
 		{06FAF775-E159-4679-8854-9E330AFE104A}.Release|x86.ActiveCfg = Release|Any CPU
 		{06FAF775-E159-4679-8854-9E330AFE104A}.Release|x86.Build.0 = Release|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Debug|x64.Build.0 = Debug|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Debug|x86.Build.0 = Debug|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Release|x64.ActiveCfg = Release|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Release|x64.Build.0 = Release|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Release|x86.ActiveCfg = Release|Any CPU
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -95,6 +109,7 @@ Global
 		{ECEAD6CC-12A4-4EA3-B16B-F14515AE4640} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{66C12B4A-FC8F-4A5F-95D5-FA09C7BC2340} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{06FAF775-E159-4679-8854-9E330AFE104A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{71FAF174-6C7C-4D7E-9FC4-A8D220537B8F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {7AC96B3A-623D-44E8-9710-E495090C5D06}

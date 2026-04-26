@@ -65,23 +65,23 @@ namespace RelayNet.Tun.Windows
         // ---- Session (packet I/O channel) ----
 
         //WINTUN_SESSION_HANDLE WintunStartSession(WINTUN_ADAPTER_HANDLE Adapter, DWORD Capacity); 
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
-        internal static extern IntPtr WintunStartSession(IntPtr adapterHandle, uint capacity);
+        [DllImport("wintun", EntryPoint = "WintunStartSession", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
+        internal static extern IntPtr WintunStartSession(IntPtr adapter, uint capacity);
 
 
         // void WintunEndSession(WINTUN_SESSION_HANDLE Session);
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
         internal static extern void WintunEndSession(IntPtr sessionHandle);
 
-        // HANDLE WintunGetReadEvent(WINTUN_SESSION_HANDLE Session);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
-        internal static extern IntPtr WintunGetReadEvent(IntPtr sessionHandle);
+        // HANDLE WintunGetReadWaitEvent(WINTUN_SESSION_HANDLE Session);
+        [DllImport("wintun", EntryPoint = "WintunGetReadWaitEvent", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
+        internal static extern IntPtr WintunGetReadWaitEvent(IntPtr session);
 
         // ---- Receive path ----
 
         // BYTE* WintunReceivePacket(WINTUN_SESSION_HANDLE Session, DWORD* PacketSize);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
-        internal static extern IntPtr WintunReceivePacket(IntPtr sessionHandle, out uint packetSize);
+        [DllImport("wintun", EntryPoint = "WintunReceivePacket", CallingConvention = CallingConvention.Winapi, SetLastError = true)]
+        internal static extern IntPtr WintunReceivePacket(IntPtr session, out uint packetSize);
 
         // void WintunReleaseReceivePacket(WINTUN_SESSION_HANDLE Session, const BYTE* Packet);
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
