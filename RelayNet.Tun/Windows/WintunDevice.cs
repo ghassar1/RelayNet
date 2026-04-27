@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Management;
+using System.Net.NetworkInformation;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -71,13 +73,11 @@ namespace RelayNet.Tun.Windows
             if (_session != IntPtr.Zero)
                 return ValueTask.CompletedTask;
 
-            // Clear stale field just in case.
             _readEvent = IntPtr.Zero;
 
-            // 1) Try to open an existing adapter first.
+            // 1) Open existing adapter or create a new one
             _adapter = WintunNative.WintunOpenAdapter(_config.AdapterName);
 
-            // 2) If it does not exist, create it.
             if (_adapter == IntPtr.Zero)
             {
                 _adapter = WintunNative.WintunCreateAdapter(
@@ -86,7 +86,6 @@ namespace RelayNet.Tun.Windows
                     IntPtr.Zero);
             }
 
-            // 3) If open/create failed, stop.
             if (_adapter == IntPtr.Zero)
             {
                 int err = Marshal.GetLastWin32Error();
@@ -94,7 +93,7 @@ namespace RelayNet.Tun.Windows
                     $"Failed to open or create Wintun adapter '{_config.AdapterName}'. Win32 error: {err}");
             }
 
-            // 4) Start packet I/O session.
+            // 2) Start Wintun packet session (NO WAITING HERE)
             _session = WintunNative.WintunStartSession(
                 _adapter,
                 _config.SessionCapacityBytes);
@@ -110,7 +109,7 @@ namespace RelayNet.Tun.Windows
                     $"Failed to start Wintun session for adapter '{_config.AdapterName}'. Win32 error: {err}");
             }
 
-            // 5) Get session read-wait event.
+            // 3) Get read-wait event
             _readEvent = WintunNative.WintunGetReadWaitEvent(_session);
 
             if (_readEvent == IntPtr.Zero)
@@ -138,59 +137,153 @@ namespace RelayNet.Tun.Windows
             string gateway4 = _config.GatewayV4.Replace("'", "''");
             string gateway6 = _config.GatewayV6.Replace("'", "''");
 
+            // 1) IPv4 address
             await RunPowerShellAsync(
                 $"New-NetIPAddress -InterfaceAlias '{adapterName}' -IPAddress '{ipv4}' -PrefixLength {prefix4}",
                 ct);
 
+            // 2) IPv6 address
             await RunPowerShellAsync(
                 $"New-NetIPAddress -InterfaceAlias '{adapterName}' -IPAddress '{ipv6}' -PrefixLength {prefix6}",
                 ct);
 
+            // 3) DNS (FIXED)
             if (_config.DnsServers is { Length: > 0 })
             {
-                string dnsList = string.Join(",", _config.DnsServers.Select(d => $"'{d.Replace("'", "''")}'"));
+                string dnsArray = "@(" + string.Join(",", _config.DnsServers.Select(d => $"\"{d}\"")) + ")";
 
-                await RunPowerShellAsync(
-                    $"Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses {dnsList}",
-                    ct);
+                try
+                {
+                    await RunPowerShellAsync(
+                        $"Set-DnsClientServerAddress -InterfaceAlias '{adapterName}' -ServerAddresses {dnsArray}",
+                        ct);
+                }
+                catch
+                {
+                    // Optional: ignore DNS failure so VPN still starts
+                }
             }
 
+            // 4) Default IPv4 route
             await RunPowerShellAsync(
                 $"New-NetRoute -InterfaceAlias '{adapterName}' -DestinationPrefix '0.0.0.0/0' -NextHop '{gateway4}'",
                 ct);
 
+            // 5) Default IPv6 route
             await RunPowerShellAsync(
                 $"New-NetRoute -InterfaceAlias '{adapterName}' -DestinationPrefix '::/0' -NextHop '{gateway6}'",
                 ct);
         }
         public async Task EnableKillSwitchAsync(CancellationToken ct)
         {
-            var aliases = await GetNonTunnelAdapterAliasesAsync(ct);
+            var adapters = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(IsValidKillSwitchAdapter)
+                .ToList();
 
-            foreach (var alias in aliases)
+            foreach (var adapter in adapters)
             {
-                string safeAlias = alias.Replace("'", "''");
-                string ruleName = GetKillSwitchRuleName(alias).Replace("'", "''");
+                ct.ThrowIfCancellationRequested();
+
+                int? ifIndex;
+                try
+                {
+                    ifIndex = adapter.GetIPProperties()?.GetIPv4Properties()?.Index;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (!ifIndex.HasValue)
+                    continue;
+
+                string ruleName = GetKillSwitchRuleName(adapter.Name).Replace("'", "''");
 
                 await RunPowerShellAsync(
-                    $"if (-not (Get-NetFirewallRule -DisplayName '{ruleName}' -ErrorAction SilentlyContinue)) " +
-                    $"{{ New-NetFirewallRule -DisplayName '{ruleName}' -Direction Outbound -Action Block -InterfaceAlias '{safeAlias}' -Enabled True }} " +
-                    $"else {{ Enable-NetFirewallRule -DisplayName '{ruleName}' }}",
+        $@"
+if (-not (Get-NetFirewallRule -DisplayName '{ruleName}' -ErrorAction SilentlyContinue))
+{{
+    New-NetFirewallRule `
+        -DisplayName '{ruleName}' `
+        -Direction Outbound `
+        -Action Block `
+        -InterfaceIndex {ifIndex.Value} `
+        -Enabled True
+}}
+",
                     ct);
             }
         }
+        private static bool IsValidKillSwitchAdapter(NetworkInterface ni)
+        {
+            if (ni.OperationalStatus != OperationalStatus.Up)
+                return false;
+
+            var desc = ni.Description ?? "";
+
+            // ❌ EXCLUDE capture / virtual drivers
+            if (desc.Contains("Npcap", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (desc.Contains("WFP", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (desc.Contains("LightWeight", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (ni.Name.Contains("*"))
+                return false;
+
+            return true;
+        }
         public async Task EnsureKillSwitchRulesExistAsync(CancellationToken ct)
         {
-            var aliases = await GetNonTunnelAdapterAliasesAsync(ct);
+            var adapters = NetworkInterface.GetAllNetworkInterfaces();
 
-            foreach (var alias in aliases)
+            foreach (var adapter in adapters)
             {
-                string safeAlias = alias.Replace("'", "''");
-                string ruleName = GetKillSwitchRuleName(alias).Replace("'", "''");
+                ct.ThrowIfCancellationRequested();
+
+                // Only real active interfaces
+                if (adapter.OperationalStatus != OperationalStatus.Up)
+                    continue;
+
+                // Skip tunnel / virtual / WFP-like interfaces
+                if (adapter.Description.Contains("WFP", StringComparison.OrdinalIgnoreCase) ||
+                    adapter.Description.Contains("LightWeight", StringComparison.OrdinalIgnoreCase) ||
+                    adapter.Name.Contains("*"))
+                    continue;
+
+                int? ifIndex = null;
+
+                try
+                {
+                    var ipv4 = adapter.GetIPProperties()?.GetIPv4Properties();
+                    ifIndex = ipv4?.Index;
+                }
+                catch
+                {
+                    continue; // skip broken adapters safely
+                }
+
+                if (!ifIndex.HasValue)
+                    continue;
+
+                string safeAlias = adapter.Name.Replace("'", "''");
+                string ruleName = GetKillSwitchRuleName(adapter.Name).Replace("'", "''");
 
                 await RunPowerShellAsync(
-                    $"if (-not (Get-NetFirewallRule -DisplayName '{ruleName}' -ErrorAction SilentlyContinue)) " +
-                    $"{{ New-NetFirewallRule -DisplayName '{ruleName}' -Direction Outbound -Action Block -InterfaceAlias '{safeAlias}' -Enabled False }}",
+        $@"
+if (-not (Get-NetFirewallRule -DisplayName '{ruleName}' -ErrorAction SilentlyContinue))
+{{
+    New-NetFirewallRule `
+        -DisplayName '{ruleName}' `
+        -Direction Outbound `
+        -Action Block `
+        -InterfaceIndex {ifIndex.Value} `
+        -Enabled False
+}}
+",
                     ct);
             }
         }
@@ -341,16 +434,17 @@ namespace RelayNet.Tun.Windows
         }
 
         private static string _Escape(string value) => $"\"{value}\"";
-        private async Task<string[]> GetNonTunnelAdapterAliasesAsync(CancellationToken ct)
+        private Task<string[]> GetNonTunnelAdapterAliasesAsync(CancellationToken ct)
         {
-            string adapterName = _config.AdapterName.Replace("'", "''");
+            var result = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up)
+                .Where(n =>
+                    !n.Description.Contains("WFP", StringComparison.OrdinalIgnoreCase) &&
+                    !n.Description.Contains("LightWeight", StringComparison.OrdinalIgnoreCase))
+                .Select(n => n.Name)
+                .ToArray();
 
-            string output = await RunPowerShellCaptureAsync(
-                $"Get-NetAdapter | Where-Object {{$_.Status -eq 'Up' -and $_.Name -ne '{adapterName}'}} | Select-Object -ExpandProperty Name",
-                ct);
-
-            return output
-                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return Task.FromResult(result);
         }
         private static async Task<string> RunPowerShellCaptureAsync(string command, CancellationToken ct)
         {
@@ -364,19 +458,45 @@ namespace RelayNet.Tun.Windows
                 CreateNoWindow = true
             };
 
-            using var process = Process.Start(psi)
-                ?? throw new InvalidOperationException("Failed to start PowerShell.");
+            using var process = new Process
+            {
+                StartInfo = psi,
+                EnableRaisingEvents = true
+            };
 
-            string stdout = await process.StandardOutput.ReadToEndAsync(ct);
-            string stderr = await process.StandardError.ReadToEndAsync(ct);
+            var stdout = new StringBuilder();
+            var stderr = new StringBuilder();
+
+            process.OutputDataReceived += (_, e) =>
+            {
+                if (e.Data != null)
+                    stdout.AppendLine(e.Data);
+            };
+
+            process.ErrorDataReceived += (_, e) =>
+            {
+                if (e.Data != null)
+                    stderr.AppendLine(e.Data);
+            };
+
+            if (!process.Start())
+                throw new InvalidOperationException("Failed to start PowerShell.");
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            using var reg = ct.Register(() =>
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+            });
 
             await process.WaitForExitAsync(ct);
 
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(
-                    $"Command failed.\n{command}\nSTDOUT: {stdout}\nSTDERR: {stderr}");
+                    $"PowerShell failed.\nSTDERR: {stderr}");
 
-            return stdout;
+            return stdout.ToString();
         }
         private static async Task RunPowerShellAsync(string command, CancellationToken ct)
         {
@@ -401,6 +521,22 @@ namespace RelayNet.Tun.Windows
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(
                     $"Command failed.\n{command}\nSTDOUT: {stdout}\nSTDERR: {stderr}");
+        }
+        private async Task WaitForAdapterAsync(string name, CancellationToken ct)
+        {
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var adapters = await RunPowerShellCaptureAsync(
+                    "Get-NetAdapter | Select-Object -ExpandProperty Name",
+                    ct);
+
+                if (adapters.Split('\n').Any(x => x.Trim().Contains(name)))
+                    return;
+
+                await Task.Yield();
+            }
         }
     }
 }

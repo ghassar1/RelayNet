@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
+using RelayNet.Core.Networking;
 using RelayNet.Tun;
 using RelayNet.Tun.Windows;
 
@@ -29,9 +31,31 @@ namespace RelayNet.Tun.Test
             // only when you want strict no-bypass mode
             await device.EnableKillSwitchAsync(CancellationToken.None);
 
+            // NEW: stream-aware grouping + wrapping before packets leave the client
+            var mux = new RelayNetMux();
+
+            Console.WriteLine("Capturing packets and grouping by logical stream...\n");
+
             await foreach (var pkt in device.ReadPacketAsync(CancellationToken.None))
             {
                 Console.WriteLine($"Packet: {pkt.Length} bytes");
+                if (!mux.TryWrapOutbound(pkt, out var projection, out var relayPayload)) {
+                    Console.WriteLine($"Ignored packet ({pkt.Length} bytes): non-IPv4 TCP/UDP");
+                    continue;
+                }
+
+                // Optional debug: deocde back to show wrapper carries strea id. 
+
+                var decoded = mux.UnwrapInbound(relayPayload);
+
+                Console.WriteLine($"Stream={projection.StreamId} " +
+                    $"New={projection.IsNewStream} " +
+                    $"Close={projection.ShouldCloseStream} " +
+                    $"PacketBytes={pkt.Length} " +
+                    $"RelayPayloadBytes={relayPayload.Length} " +
+                    $"ActiveStreams={mux.ActiveStreamCount} " +
+                    $"DecodedStrean={decoded.StreamId} " 
+                    );
             }
         }
     }
