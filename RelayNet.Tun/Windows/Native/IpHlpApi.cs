@@ -40,6 +40,9 @@ namespace RelayNet.Tun.Windows.Native
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int AddIpAddress(uint Address, uint IpMask, int IfIndex, out uint NteContext, out uint Ntenstance);
 
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern int GetBestRoute(uint dwDestAddr, uint dwSourceAddr, out MIB_IPFORWARDROW pBestRoute);
+
         internal static void AddOrUpdateDefaultRouteIpv4(int interfaceIndex, IPAddress nextHop, int metric)
         {
 
@@ -92,6 +95,19 @@ namespace RelayNet.Tun.Windows.Native
                 return;
 
             throw new Win32Exception(err, $"AddIpAddress failed for interface {interfaceIndex} for {address}/{mask}.");
+        }
+
+        internal static int GetBestInterfaceForDestinationIp4(IPAddress destination)
+        { 
+            if (destination.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+                throw new ArgumentException("Destination must be IPv4", nameof(destination));
+
+            int err = GetBestRoute(ToNetworkOrderUnit32(destination), ToNetworkOrderUnit32(IPAddress.Any), out var bestRoute);
+
+            if (err != 0)
+                throw new Win32Exception(err, $"GetBestRoute failed for destination {destination}.");
+
+            return checked((int)bestRoute.dwForwardIfIndex);
         }
         private static uint ToNetworkOrderUnit32(IPAddress address)
         {

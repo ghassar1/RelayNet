@@ -1,4 +1,5 @@
-﻿using RelayNet.Tun.Windows.Native;
+﻿using Microsoft.Win32;
+using RelayNet.Tun.Windows.Native;
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -22,10 +23,11 @@ namespace RelayNet.Tun.Windows
             ct.ThrowIfCancellationRequested();
 
             var (ipv4, prefix4) = ParseCidr(_config.AddressCidrV4);
-            int interfaceIndex = GetInterfaceIndexByName(_config.AdapterName);
+            var adapter = GetAdapterByName(_config.AdapterName);
+            int interfaceIndex = GetInterfaceIndex(adapter);
 
             ApplyIpv4Address(interfaceIndex, ipv4, prefix4);
-            ConfigureDnsAsync(ct); 
+            ConfigureDnsAsync(adapter,ct); 
 
             var gateway4 = IPAddress.Parse(_config.GatewayV4);
 
@@ -36,16 +38,18 @@ namespace RelayNet.Tun.Windows
 
         private static void VerifyDefaultRouteOwner(int expectedInterfaceIndex)
         {
-            var defaultV4 = IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpConnections();
+            // Verify the actual selected route for internet test destinations, not jus route presence.
 
-            _ = defaultV4; // Placeholder for keep parity with future richer route verification. 
+            int best1 = IpHlpApi.GetBestInterfaceForDestinationIp4(IPAddress.Parse("1.1.1.1"));
+            int best2 = IpHlpApi.GetBestInterfaceForDestinationIp4(IPAddress.Parse("8.8.8.8"));
 
-            var adapters = NetworkInterface.GetAllNetworkInterfaces();
-            bool found = adapters.Any(a => a.GetIPProperties().GetIPv4Properties()?.Index == expectedInterfaceIndex);
-
-            if (!found)
-                throw new InvalidOperationException($"Failed to verify active interface index {expectedInterfaceIndex}");
+            if (best1 != expectedInterfaceIndex || best2 != expectedInterfaceIndex)
+            {
+                throw new InvalidOperationException($"Default route verification failed. Expected ifIndex={expectedInterfaceIndex}," +
+                    $" got best route ifIndex value {best1} and {best2}.");
+            }
         }
+
         private static void ApplyIpv4Address(int interfaceIndex, string ip, int prefixLength)
         {
             var address = IPAddress.Parse(ip);
@@ -53,21 +57,34 @@ namespace RelayNet.Tun.Windows
             IpHlpApi.AddOrUpdateIPv4Address(interfaceIndex, address, mask);
         }
 
-        private static void ConfigureDnsAsync(CancellationToken ct)
+        private static void ConfigureDnsAsync(NetworkInterface adapter, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            // DNS is intentionally not configured here until we add a native DNS API path
-            // (no netsh/powershell shell dependency).
+            if (_config.DnsServers is null || _config.DnsServers.Length == 0)
+                return;
+            string dns = string.Join(",", _config.DnsServers);
+            string adapterId = adapter.Id;
+
+            const string tcpipV4Path = @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces";
+            const string tcpipV6Path = @"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces";
+
+            SetRegistryDnsValue(tcpipV4Path, adapterId, dns); 
+            SetRegistryDnsValue(tcpipV6Path, adapterId, dns);
+
+
         }
 
-        private static int GetInterfaceIndexByName(string adapterName)
+        private static NetworkInterface GetAdapterByName(string adapterName)
         {
             var match = NetworkInterface.GetAllNetworkInterfaces()
                 .FirstOrDefault(i => string.Equals(i.Name, adapterName, StringComparison.OrdinalIgnoreCase));
-
-            int? index = match?.GetIPProperties().GetIPv4Properties()?.Index;
+            return match ?? throw new InvalidOperationException($"Could not find adapter '{adapterName}'.");
+        }
+        private static int GetInterfaceIndex(NetworkInterface adater)
+        { 
+            int? index = adater.GetIPProperties().GetIPv4Properties()?.Index;
             if (!index.HasValue)
-                throw new InvalidOperationException($"Could not resolve IPv4 interface index for adapter '{adapterName}'.");
+                throw new InvalidOperationException($"Could not resolve IPv4 interface index for adapter '{adater.Name}'.");
             return index.Value;
         }
         private static (string Ip, int PrefixLength) ParseCidr(string cidr)
@@ -93,6 +110,15 @@ namespace RelayNet.Tun.Windows
                 ];
             return new IPAddress(bytes).ToString();
 
+        }
+        private static void SetRegistryDnsValue(string rootPath, string adapterId, string dnsServersCsv)
+        {
+            using RegistryKey? key = Registry.LocalMachine.OpenSubKey($@"{rootPath}\{adapterId}", writable: true);
+         
+            if (key is null)
+                throw new InvalidOperationException($"Could not open registry key for adapter '{adapterId}' at  '{rootPath}'.");
+
+            key.SetValue("NameServer", dnsServersCsv, RegistryValueKind.String);
         }
     }
 }
