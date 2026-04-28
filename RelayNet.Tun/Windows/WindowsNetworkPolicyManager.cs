@@ -4,11 +4,13 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace RelayNet.Tun.Windows
 {
+    [SupportedOSPlatform("windows")]
     internal sealed class WindowsNetworkPolicyManager
     {
         private readonly TunConfig _config;
@@ -21,6 +23,8 @@ namespace RelayNet.Tun.Windows
         public Task ConfigureAdapterAndRoutesAsync(CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
+            if (!OperatingSystem.IsWindows())
+                throw new PlatformNotSupportedException("WindowsNetworkPolicyManager is supported on Windows only.");
 
             var (ipv4, prefix4) = ParseCidr(_config.AddressCidrV4);
             var adapter = GetAdapterByName(_config.AdapterName);
