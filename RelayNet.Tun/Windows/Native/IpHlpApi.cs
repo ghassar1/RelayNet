@@ -36,9 +36,11 @@ namespace RelayNet.Tun.Windows.Native
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int SetIpForwardEntry(ref MIB_IPFORWARDROW pRoute);
 
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern int AddIPAddress(uint Address, uint IpMask, int IfIndex, out uint NteContext, out uint Ntenstance);
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
-        private static extern int AddIpAddress(uint Address, uint IpMask, int IfIndex, out uint NteContext, out uint Ntenstance);
+        private static extern int DeleteIPAddress(uint NteContext);
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int GetBestRoute(uint dwDestAddr, uint dwSourceAddr, out MIB_IPFORWARDROW pBestRoute);
@@ -81,22 +83,27 @@ namespace RelayNet.Tun.Windows.Native
             }
             throw new Win32Exception(createErr, $"CreateIpForwardEntry failed for interface {interfaceIndex}.");
         }
-        internal static void AddOrUpdateIPv4Address(int interfaceIndex, IPAddress address, IPAddress mask)
+        internal static uint? AddOrUpdateIPv4Address(int interfaceIndex, IPAddress address, IPAddress mask)
         {
            if(address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                 throw new ArgumentException("Address must be IPv4.", nameof(address));
             if(mask.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                 throw new ArgumentException("Mask must be IPv4.", nameof(mask));
 
-            int err = AddIpAddress(ToNetworkOrderUnit32(address), ToNetworkOrderUnit32(mask), interfaceIndex, out _, out _);
+            int err = AddIPAddress(ToNetworkOrderUnit32(address), ToNetworkOrderUnit32(mask), interfaceIndex, out uint nteContext, out _);
 
             // 5010/183 can show up when address already exists. 
             if(err == 0 || err == ERROR_OBJECT_ALREADY_EXISTS || err == 183)
-                return;
+                return err == 0 ? nteContext : null;
 
             throw new Win32Exception(err, $"AddIpAddress failed for interface {interfaceIndex} for {address}/{mask}.");
         }
-
+        internal static void DeleteIPv4Address(uint nteContext)
+        { 
+            int err = DeleteIPAddress(nteContext);
+            if(err != 0)
+                throw new Win32Exception(err, $"DeleteIPAddress failed for NTE context {nteContext}.");
+        }
         internal static int GetBestInterfaceForDestinationIp4(IPAddress destination)
         { 
             if (destination.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
