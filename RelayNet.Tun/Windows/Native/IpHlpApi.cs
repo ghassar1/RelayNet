@@ -43,6 +43,9 @@ namespace RelayNet.Tun.Windows.Native
             out uint NteInstance);
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern int DeleteIPAddress(uint NteContext);
+
+        [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int GetBestRoute(
             uint dwDestAddr,
             uint dwSourceAddr,
@@ -87,7 +90,7 @@ namespace RelayNet.Tun.Windows.Native
             throw new Win32Exception(createErr, $"CreateIpForwardEntry failed for interface {interfaceIndex}.");
         }
 
-        internal static void AddOrUpdateIPv4Address(int interfaceIndex, IPAddress address, IPAddress mask)
+        internal static uint? AddOrUpdateIPv4Address(int interfaceIndex, IPAddress address, IPAddress mask)
         {
             if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                 throw new ArgumentException("Address must be IPv4.", nameof(address));
@@ -98,14 +101,21 @@ namespace RelayNet.Tun.Windows.Native
                 ToNetworkOrderUInt32(address),
                 ToNetworkOrderUInt32(mask),
                 interfaceIndex,
-                out _,
+                out uint nteContext,
                 out _);
 
             // 5010/183 can show up when address already exists.
             if (err == 0 || err == ERROR_OBJECT_ALREADY_EXISTS || err == 183)
-                return;
+                return err == 0 ? nteContext : null;
 
             throw new Win32Exception(err, $"AddIPAddress failed on interface {interfaceIndex} for {address}/{mask}.");
+        }
+
+        internal static void DeleteIPv4Address(uint nteContext)
+        {
+            int err = DeleteIPAddress(nteContext);
+            if (err != 0)
+                throw new Win32Exception(err, $"DeleteIPAddress failed for NTE context {nteContext}.");
         }
 
         internal static int GetBestInterfaceForDestinationIPv4(IPAddress destination)
