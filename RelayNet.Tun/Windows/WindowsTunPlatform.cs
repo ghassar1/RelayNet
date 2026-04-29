@@ -29,5 +29,19 @@ namespace RelayNet.Tun.Windows
             var manager = new WindowsNetworkPolicyManager(config);
             return manager.ConfigureAdapterAndRoutesAsync(ct);
         }
+
+        public async Task EnablePhase3KillSwitchAsync(
+            TunConfig config,
+            WfpBootstrapContext bootstrapContext,
+            CancellationToken ct)
+        {
+            ArgumentNullException.ThrowIfNull(config);
+            ArgumentNullException.ThrowIfNull(bootstrapContext);
+            ct.ThrowIfCancellationRequested();
+
+            var wfp = new WfpPolicyManager(config);
+            await wfp.CleanupStaleArtifactsAsync(ct);
+            await wfp.ApplyAsync(bootstrapContext, ct);
+        }
     }
 }
