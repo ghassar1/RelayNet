@@ -77,7 +77,7 @@ namespace RelayNet.Tun.Windows
                 WintunNative.WintunCloseAdapter(_adapter);
                 _adapter = IntPtr.Zero;
 
-                throw new InvalidOperationException($"Failed to get Wintun read event for '{_config.AdapterName}'. Win32 error: {err}";
+                throw new InvalidOperationException($"Failed to get Wintun read event for '{_config.AdapterName}'. Win32 error: {err}");
 
             }
 
