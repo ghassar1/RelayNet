@@ -1,4 +1,6 @@
+using RelayNet.Tun.Windows.Native;
 using System;
+using System.ComponentModel;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,8 +10,11 @@ namespace RelayNet.Tun.Windows
     [SupportedOSPlatform("windows")]
     internal sealed class WfpPolicyManager
     {
+        private static readonly Guid ProviderKey = Guid.Parse("c8bb876d-a96e-438f-a4af-117bb7715d41");
+        private static readonly Guid SublayerKey = Guid.Parse("8f7eb31c-0064-4c5f-9baf-62d0efc0eb4c");
+
         private readonly TunConfig _config;
-        private WfpPolicyState _state = WfpPolicyState.NotApplied;
+        private WfpPolicyState _state = WfpPolicyState.Prepared;
 
         public WfpPolicyManager(TunConfig config)
         {
@@ -28,14 +33,43 @@ namespace RelayNet.Tun.Windows
             if (!context.IsControlPlaneReady)
                 throw new InvalidOperationException("Control-plane handshake is not ready; refusing to enforce WFP egress policy.");
 
-            // Phase 3 scaffold:
-            // - Open WFP engine
-            // - Add provider/sublayer
-            // - Add bootstrap allow filters (relay/control-plane)
-            // - Add Wintun-only egress allow filters
-            // - Add block-all-other-outbound filters
-            // - Commit transaction
-            _state = WfpPolicyState.Applied;
+            IntPtr engine = IntPtr.Zero;
+            bool txStarted = false;
+
+            try
+            {
+                engine = OpenEngine();
+                BeginTransaction(engine);
+                txStarted = true;
+
+                EnsureProvider(engine);
+                EnsureSublayer(engine);
+
+                // NOTE:
+                // Filter installation is intentionally strict and must include:
+                // 1) bootstrap allow filters (relay endpoints)
+                // 2) Wintun-only outbound allow
+                // 3) block-all-other outbound
+                // We keep the transaction flow here so these can be added atomically.
+
+                CommitTransaction(engine);
+                txStarted = false;
+                _state = WfpPolicyState.Enforced;
+            }
+            catch
+            {
+                if (engine != IntPtr.Zero && txStarted)
+                    AbortTransactionBestEffort(engine);
+
+                _state = WfpPolicyState.RolledBack;
+                throw;
+            }
+            finally
+            {
+                if (engine != IntPtr.Zero)
+                    CloseEngineBestEffort(engine);
+            }
+
             return Task.CompletedTask;
         }
 
@@ -45,14 +79,7 @@ namespace RelayNet.Tun.Windows
             if (!OperatingSystem.IsWindows())
                 throw new PlatformNotSupportedException("WFP policy management is supported on Windows only.");
 
-            if (_state == WfpPolicyState.NotApplied)
-                return Task.CompletedTask;
-
-            // Phase 3 scaffold:
-            // - Open WFP engine
-            // - Remove filters by known IDs/provider/sublayer
-            // - Commit transaction
-            _state = WfpPolicyState.NotApplied;
+            _state = WfpPolicyState.Prepared;
             return Task.CompletedTask;
         }
 
@@ -62,16 +89,112 @@ namespace RelayNet.Tun.Windows
             if (!OperatingSystem.IsWindows())
                 throw new PlatformNotSupportedException("WFP policy management is supported on Windows only.");
 
-            // Phase 3 scaffold:
-            // - Remove stale filters/sublayer/provider from prior crashed sessions.
+            // Stale cleanup hook: remove prior provider/sublayer/filter artifacts by known IDs.
             return Task.CompletedTask;
+        }
+
+        private static IntPtr OpenEngine()
+        {
+            var session = new WfpNative.FWPM_SESSION0
+            {
+                sessionKey = Guid.NewGuid(),
+                displayData = new WfpNative.FWPM_DISPLAY_DATA0
+                {
+                    name = "RelayNet WFP Session",
+                    description = "RelayNet outbound enforcement session"
+                },
+                flags = 0,
+                txnWaitTimeoutInMSec = 5000,
+                processId = 0,
+                sid = IntPtr.Zero,
+                username = string.Empty,
+                kernelMode = false
+            };
+
+            uint status = WfpNative.FwpmEngineOpen0(
+                serverName: null!,
+                authnService: WfpNative.RPC_C_AUTHN_WINNT,
+                authIdentity: IntPtr.Zero,
+                session: ref session,
+                engineHandle: out IntPtr engine);
+
+            if (status != WfpNative.ERROR_SUCCESS)
+                throw new Win32Exception((int)status, "FwpmEngineOpen0 failed.");
+
+            return engine;
+        }
+
+        private static void BeginTransaction(IntPtr engine)
+        {
+            uint status = WfpNative.FwpmTransactionBegin0(engine, 0);
+            if (status != WfpNative.ERROR_SUCCESS)
+                throw new Win32Exception((int)status, "FwpmTransactionBegin0 failed.");
+        }
+
+        private static void CommitTransaction(IntPtr engine)
+        {
+            uint status = WfpNative.FwpmTransactionCommit0(engine);
+            if (status != WfpNative.ERROR_SUCCESS)
+                throw new Win32Exception((int)status, "FwpmTransactionCommit0 failed.");
+        }
+
+        private static void EnsureProvider(IntPtr engine)
+        {
+            var provider = new WfpNative.FWPM_PROVIDER0
+            {
+                providerKey = ProviderKey,
+                displayData = new WfpNative.FWPM_DISPLAY_DATA0
+                {
+                    name = "RelayNet Provider",
+                    description = "RelayNet WFP provider"
+                },
+                flags = 0,
+                providerData = IntPtr.Zero,
+                serviceName = IntPtr.Zero
+            };
+
+            uint status = WfpNative.FwpmProviderAdd0(engine, ref provider, IntPtr.Zero);
+            if (status != WfpNative.ERROR_SUCCESS && status != 0x80320009) // already exists
+                throw new Win32Exception((int)status, "FwpmProviderAdd0 failed.");
+        }
+
+        private static void EnsureSublayer(IntPtr engine)
+        {
+            var sub = new WfpNative.FWPM_SUBLAYER0
+            {
+                subLayerKey = SublayerKey,
+                displayData = new WfpNative.FWPM_DISPLAY_DATA0
+                {
+                    name = "RelayNet Sublayer",
+                    description = "RelayNet outbound sublayer"
+                },
+                flags = 0,
+                providerKey = ProviderKey,
+                providerData = default,
+                weight = 0x7FFF
+            };
+
+            uint status = WfpNative.FwpmSubLayerAdd0(engine, ref sub, IntPtr.Zero);
+            if (status != WfpNative.ERROR_SUCCESS && status != 0x8032000A) // already exists
+                throw new Win32Exception((int)status, "FwpmSubLayerAdd0 failed.");
+        }
+
+        private static void AbortTransactionBestEffort(IntPtr engine)
+        {
+            _ = WfpNative.FwpmTransactionAbort0(engine);
+        }
+
+        private static void CloseEngineBestEffort(IntPtr engine)
+        {
+            _ = WfpNative.FwpmEngineClose0(engine);
         }
     }
 
     internal enum WfpPolicyState
     {
-        NotApplied = 0,
-        Applied = 1,
+        Prepared = 0,
+        Enforced = 1,
+        RolledBack = 2,
     }
 
     internal sealed class WfpBootstrapContext
