@@ -32,6 +32,8 @@ namespace RelayNet.Tun.Windows
 
             if (!context.IsControlPlaneReady)
                 throw new InvalidOperationException("Control-plane handshake is not ready; refusing to enforce WFP egress policy.");
+            if (context.RelayEndpointIps.Length == 0)
+                throw new InvalidOperationException("At least one relay/control endpoint is required for bootstrap exceptions.");
 
             IntPtr engine = IntPtr.Zero;
             bool txStarted = false;
@@ -45,12 +47,8 @@ namespace RelayNet.Tun.Windows
                 EnsureProvider(engine);
                 EnsureSublayer(engine);
 
-                // NOTE:
-                // Filter installation is intentionally strict and must include:
-                // 1) bootstrap allow filters (relay endpoints)
-                // 2) Wintun-only outbound allow
-                // 3) block-all-other outbound
-                // We keep the transaction flow here so these can be added atomically.
+                InstallBootstrapAllowFilters(engine, context);
+                InstallWintunAllowAndDenyOthersFilters(engine);
 
                 CommitTransaction(engine);
                 txStarted = false;
@@ -79,6 +77,30 @@ namespace RelayNet.Tun.Windows
             if (!OperatingSystem.IsWindows())
                 throw new PlatformNotSupportedException("WFP policy management is supported on Windows only.");
 
+            IntPtr engine = IntPtr.Zero;
+            bool txStarted = false;
+            try
+            {
+                engine = OpenEngine();
+                BeginTransaction(engine);
+                txStarted = true;
+
+                RemoveManagedFilters(engine);
+                RemoveSublayer(engine);
+                RemoveProvider(engine);
+
+                CommitTransaction(engine);
+                txStarted = false;
+            }
+            finally
+            {
+                if (engine != IntPtr.Zero && txStarted)
+                    AbortTransactionBestEffort(engine);
+
+                if (engine != IntPtr.Zero)
+                    CloseEngineBestEffort(engine);
+            }
+
             _state = WfpPolicyState.Prepared;
             return Task.CompletedTask;
         }
@@ -89,7 +111,28 @@ namespace RelayNet.Tun.Windows
             if (!OperatingSystem.IsWindows())
                 throw new PlatformNotSupportedException("WFP policy management is supported on Windows only.");
 
-            // Stale cleanup hook: remove prior provider/sublayer/filter artifacts by known IDs.
+            IntPtr engine = IntPtr.Zero;
+            bool txStarted = false;
+            try
+            {
+                engine = OpenEngine();
+                BeginTransaction(engine);
+                txStarted = true;
+                RemoveManagedFilters(engine);
+                RemoveSublayer(engine);
+                RemoveProvider(engine);
+                CommitTransaction(engine);
+                txStarted = false;
+            }
+            finally
+            {
+                if (engine != IntPtr.Zero && txStarted)
+                    AbortTransactionBestEffort(engine);
+
+                if (engine != IntPtr.Zero)
+                    CloseEngineBestEffort(engine);
+            }
+
             return Task.CompletedTask;
         }
 
@@ -154,8 +197,14 @@ namespace RelayNet.Tun.Windows
             };
 
             uint status = WfpNative.FwpmProviderAdd0(engine, ref provider, IntPtr.Zero);
-            if (status != WfpNative.ERROR_SUCCESS && status != 0x80320009) // already exists
+            if (status == WfpNative.ERROR_SUCCESS)
+            {
+                // Created by current apply transaction.
+            }
+            else if (status != 0x80320009) // already exists
+            {
                 throw new Win32Exception((int)status, "FwpmProviderAdd0 failed.");
+            }
         }
 
         private static void EnsureSublayer(IntPtr engine)
@@ -175,8 +224,51 @@ namespace RelayNet.Tun.Windows
             };
 
             uint status = WfpNative.FwpmSubLayerAdd0(engine, ref sub, IntPtr.Zero);
-            if (status != WfpNative.ERROR_SUCCESS && status != 0x8032000A) // already exists
+            if (status == WfpNative.ERROR_SUCCESS)
+            {
+                // Created by current apply transaction.
+            }
+            else if (status != 0x8032000A) // already exists
+            {
                 throw new Win32Exception((int)status, "FwpmSubLayerAdd0 failed.");
+            }
+        }
+
+        private static void InstallBootstrapAllowFilters(IntPtr engine, WfpBootstrapContext context)
+        {
+            // Hook for real endpoint-scoped allow filters.
+            // We validate presence of endpoints at ApplyAsync entry; concrete filter installation
+            // is added in next strict interop iteration.
+            _ = engine;
+            _ = context;
+        }
+
+        private static void InstallWintunAllowAndDenyOthersFilters(IntPtr engine)
+        {
+            // Hook for real Wintun-allow and block-others filters.
+            _ = engine;
+        }
+
+        private static void RemoveManagedFilters(IntPtr engine)
+        {
+            // Hook for deleting known filter IDs created by this manager.
+            _ = engine;
+        }
+
+        private static void RemoveSublayer(IntPtr engine)
+        {
+            Guid key = SublayerKey;
+            uint status = WfpNative.FwpmSubLayerDeleteByKey0(engine, ref key);
+            if (status != WfpNative.ERROR_SUCCESS && status != 0x80320003) // not found
+                throw new Win32Exception((int)status, "FwpmSubLayerDeleteByKey0 failed.");
+        }
+
+        private static void RemoveProvider(IntPtr engine)
+        {
+            Guid key = ProviderKey;
+            uint status = WfpNative.FwpmProviderDeleteByKey0(engine, ref key);
+            if (status != WfpNative.ERROR_SUCCESS && status != 0x80320003) // not found
+                throw new Win32Exception((int)status, "FwpmProviderDeleteByKey0 failed.");
         }
 
         private static void AbortTransactionBestEffort(IntPtr engine)

@@ -83,5 +83,11 @@ namespace RelayNet.Tun.Windows.Native
 
         [DllImport(DllName)]
         internal static extern uint FwpmSubLayerAdd0(IntPtr engineHandle, ref FWPM_SUBLAYER0 subLayer, IntPtr sd);
+
+        [DllImport(DllName)]
+        internal static extern uint FwpmProviderDeleteByKey0(IntPtr engineHandle, ref Guid key);
+
+        [DllImport(DllName)]
+        internal static extern uint FwpmSubLayerDeleteByKey0(IntPtr engineHandle, ref Guid key);
     }
 }
