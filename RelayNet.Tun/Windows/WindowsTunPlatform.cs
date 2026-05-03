@@ -4,9 +4,9 @@ using System.Threading.Tasks;
 
 namespace RelayNet.Tun.Windows
 {
-    /// <summary>
-    /// Windows implementation of <see cref="ITunPlatform"/>.
-    /// Platform owns OS-level network policy/configuration (IP, routes, DNS).
+    /// <summary>   
+    /// Windows implemntation of <see cref="ITunPlatform"/>.
+    /// Platform owns OS-level network policy/configuration (IP,routes, DNS).
     /// Device owns packet I/O only.
     /// </summary>
     public sealed class WindowsTunPlatform : ITunPlatform
@@ -18,6 +18,7 @@ namespace RelayNet.Tun.Windows
 
             ITunDevice device = new WintunDevice(config);
             return Task.FromResult(device);
+
         }
 
         public Task ConfigureAsync(ITunDevice device, TunConfig config, CancellationToken ct)
@@ -30,18 +31,15 @@ namespace RelayNet.Tun.Windows
             return manager.ConfigureAdapterAndRoutesAsync(ct);
         }
 
-        public async Task EnablePhase3KillSwitchAsync(
-            TunConfig config,
-            WfpBootstrapContext bootstrapContext,
-            CancellationToken ct)
+        public async Task EnableKillSwitchAsync(TunConfig config, WfpBootsrapContext bootsrapContext, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(config);
-            ArgumentNullException.ThrowIfNull(bootstrapContext);
+            ArgumentNullException.ThrowIfNull(bootsrapContext);
             ct.ThrowIfCancellationRequested();
 
             var wfp = new WfpPolicyManager(config);
             await wfp.CleanupStaleArtifactsAsync(ct);
-            await wfp.ApplyAsync(bootstrapContext, ct);
+            await wfp.ApplyAsync(bootsrapContext, ct);
         }
     }
 }

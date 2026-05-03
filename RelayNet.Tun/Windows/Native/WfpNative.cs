@@ -1,5 +1,7 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace RelayNet.Tun.Windows.Native
 {
@@ -11,17 +13,19 @@ namespace RelayNet.Tun.Windows.Native
         internal const int ERROR_SUCCESS = 0;
         internal const int FWP_ACTION_BLOCK = 0x00000001;
         internal const int FWP_ACTION_PERMIT = 0x00000002;
-
         internal const uint FWP_EMPTY = 0;
+        internal const uint FWP_UINT8 = 1;
+        internal const uint FWP_UINT16 = 2;
         internal const uint FWP_UINT32 = 3;
         internal const uint FWP_UINT64 = 4;
         internal const uint FWP_BYTE_ARRAY16_TYPE = 11;
+
         internal const uint FWP_MATCH_EQUAL = 0;
 
-        internal static readonly Guid FWPM_LAYER_ALE_AUTH_CONNECT_V4 = new("c38d57d1-05a7-4c33-904f-7fbceee60e82");
+        internal static readonly Guid FWPM_LAYER_ALE_AUTH_CONNECT_V4 = new Guid("c38d57d1-05a7-4c33-904f-7fbceee60e82");
         internal static readonly Guid FWPM_LAYER_ALE_AUTH_CONNECT_V6 = new("4a72393b-319f-44bc-84c3-ba54dcb3b6b4");
-        internal static readonly Guid FWPM_CONDITION_IP_REMOTE_ADDRESS = new("b235ae9a-1d64-49b8-a44c-5ff3d9095045");
-        internal static readonly Guid FWPM_CONDITION_IP_LOCAL_INTERFACE = new("4cd62a49-59c3-4969-b7f3-bda5d32890a4");
+        internal static readonly Guid FWPM_CONDITION_IP_REMOTE_ADDRESS = new Guid("b235ae9a-1d64-49b8-a44c-5ff3d9095045");
+        internal static readonly Guid FWPM_CONDITION_IP_LOCAL_INTERFACE = new Guid("4cd62a49-59c3-4969-b7f3-bda5d32890a4");
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         internal struct FWPM_DISPLAY_DATA0
@@ -36,13 +40,12 @@ namespace RelayNet.Tun.Windows.Native
             public Guid sessionKey;
             public FWPM_DISPLAY_DATA0 displayData;
             public uint flags;
-            public uint txnWaitTimeoutInMSec;
+            public uint txnWaitTimeoutInMsec;
             public uint processId;
             public IntPtr sid;
             [MarshalAs(UnmanagedType.LPWStr)] public string username;
             public bool kernelMode;
         }
-
         [StructLayout(LayoutKind.Sequential)]
         internal struct FWPM_PROVIDER0
         {
@@ -52,17 +55,16 @@ namespace RelayNet.Tun.Windows.Native
             public IntPtr providerData;
             public IntPtr serviceName;
         }
-
         [StructLayout(LayoutKind.Sequential)]
         internal struct FWP_BYTE_BLOB
-        {
+         {
             public uint size;
             public IntPtr data;
         }
 
         [StructLayout(LayoutKind.Sequential)]
         internal struct FWPM_SUBLAYER0
-        {
+        { 
             public Guid subLayerKey;
             public FWPM_DISPLAY_DATA0 displayData;
             public uint flags;
@@ -70,6 +72,7 @@ namespace RelayNet.Tun.Windows.Native
             public FWP_BYTE_BLOB providerData;
             public ushort weight;
         }
+
 
         [StructLayout(LayoutKind.Sequential)]
         internal struct FWP_VALUE0
@@ -79,8 +82,10 @@ namespace RelayNet.Tun.Windows.Native
         }
 
         [StructLayout(LayoutKind.Explicit)]
-        internal struct FWP_VALUE0_UNION
+        internal struct  FWP_VALUE0_UNION
         {
+            [FieldOffset(0)] public byte uint8;
+            [FieldOffset(0)] public ushort uint16;
             [FieldOffset(0)] public uint uint32;
             [FieldOffset(0)] public ulong uint64;
             [FieldOffset(0)] public IntPtr byteArray16;
@@ -93,38 +98,38 @@ namespace RelayNet.Tun.Windows.Native
             public FWP_CONDITION_VALUE0_UNION value;
         }
 
+
         [StructLayout(LayoutKind.Explicit)]
-        internal struct FWP_CONDITION_VALUE0_UNION
-        {
+        internal struct FWP_CONDITION_VALUE0_UNION {
+            [FieldOffset(0)] public byte uint8;
+            [FieldOffset(0)] public ushort uint16;
             [FieldOffset(0)] public uint uint32;
+            [FieldOffset(0)] public uint uint64;
             [FieldOffset(0)] public IntPtr byteArray16;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct FWPM_ACTION0
-        {
+        internal struct FWPM_ACTION0 {
             public uint type;
             public Guid filterType;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct FWP_BYTE_ARRAY16
-        {
+        internal struct FWP_BYTE_ARRAY16 {
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
             public byte[] byteArray16;
         }
 
+
         [StructLayout(LayoutKind.Sequential)]
-        internal struct FWPM_FILTER_CONDITION0
-        {
+        internal struct FWPM_FILTER_CONDITION0 {
             public Guid fieldKey;
             public uint matchType;
             public FWP_CONDITION_VALUE0 conditionValue;
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        internal struct FWPM_FILTER0
-        {
+        internal struct FWPM_FILTER0 {
             public Guid filterKey;
             public FWPM_DISPLAY_DATA0 displayData;
             public uint flags;
@@ -141,17 +146,40 @@ namespace RelayNet.Tun.Windows.Native
         }
 
         [DllImport(DllName, CharSet = CharSet.Unicode)]
-        internal static extern int FwpmEngineOpen0(string serverName, int authnService, IntPtr authIdentity, ref FWPM_SESSION0 session, out IntPtr engineHandle);
+        internal static extern int FwpmEngineOpen0(
+            [MarshalAs(UnmanagedType.LPWStr)] string serverName,
+            int authnService,
+            IntPtr authIdentity,
+            ref FWPM_SESSION0 session,
+            out IntPtr engineHandle);
+      
+         [DllImport(DllName)]
+         internal static extern int FwpmEngineClose0(IntPtr engineHandle);
 
-        [DllImport(DllName)] internal static extern int FwpmEngineClose0(IntPtr engineHandle);
-        [DllImport(DllName)] internal static extern int FwpmTransactionBegin0(IntPtr engineHandle, uint flags);
-        [DllImport(DllName)] internal static extern int FwpmTransactionCommit0(IntPtr engineHandle);
-        [DllImport(DllName)] internal static extern int FwpmTransactionAbort0(IntPtr engineHandle);
-        [DllImport(DllName)] internal static extern int FwpmProviderAdd0(IntPtr engineHandle, ref FWPM_PROVIDER0 provider, IntPtr sd);
-        [DllImport(DllName)] internal static extern int FwpmSubLayerAdd0(IntPtr engineHandle, ref FWPM_SUBLAYER0 subLayer, IntPtr sd);
-        [DllImport(DllName)] internal static extern int FwpmProviderDeleteByKey0(IntPtr engineHandle, ref Guid key);
-        [DllImport(DllName)] internal static extern int FwpmSubLayerDeleteByKey0(IntPtr engineHandle, ref Guid key);
-        [DllImport(DllName)] internal static extern int FwpmFilterAdd0(IntPtr engineHandle, ref FWPM_FILTER0 filter, IntPtr sd, out ulong id);
-        [DllImport(DllName)] internal static extern int FwpmFilterDeleteById0(IntPtr engineHandle, ulong id);
+        [DllImport(DllName)]
+        internal static extern int FwpmTransactionBegin0(IntPtr engineHandle, uint flags);
+
+        [DllImport(DllName)]
+        internal static extern int FwpmTransactionCommit0(IntPtr engineHandle);
+
+        [DllImport(DllName)]
+        internal static extern int FwpmTransactionAbort0(IntPtr engineHandle);
+
+        [DllImport(DllName)]
+        internal static extern int FwpmProviderAdd0(IntPtr engineHandle, ref FWPM_PROVIDER0 provider, IntPtr sd);
+
+        [DllImport(DllName)]
+        internal static extern int FwpmSubLayerAdd0(IntPtr engineHandle, ref FWPM_SUBLAYER0 subLayer, IntPtr sd);
+
+        [DllImport(DllName)]
+        internal static extern int FwpmProviderDeleteByKey0(IntPtr engineHandle, ref Guid key);
+
+        [DllImport(DllName)]
+        internal static extern int FwpmSubLayerDeleteByKey0(IntPtr engineHandle, ref Guid key);
+        [DllImport(DllName)]
+        internal static extern int FwpmFilterAdd0(IntPtr engineHandle, ref FWPM_FILTER0 filter, IntPtr sd, out ulong id);
+        [DllImport(DllName)]
+        internal static extern int FwpmFilterDeleteById0(IntPtr engineHandle, ulong id);
+
     }
 }

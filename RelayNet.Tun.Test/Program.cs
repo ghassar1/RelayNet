@@ -26,7 +26,7 @@ namespace RelayNet.Tun.Test
             await device.StartAsync(CancellationToken.None);
             await platform.ConfigureAsync(device, config, CancellationToken.None);
 
-            // Kill-switch is implemented in Phase 3 (WFP).
+            // Kill-switch is implemented in Phase 3 (WEP)
 
             // NEW: stream-aware grouping + wrapping before packets leave the client
             var mux = new RelayNetMux();
