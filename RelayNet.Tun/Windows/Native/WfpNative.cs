@@ -7,7 +7,7 @@ namespace RelayNet.Tun.Windows.Native
     {
         private const string DllName = "fwpuclnt.dll";
 
-        internal const uint RPC_C_AUTHN_WINNT = 10;
+        internal const uint RPC_C_AUTHN_WINNT = 10u;
         internal const uint ERROR_SUCCESS = 0;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

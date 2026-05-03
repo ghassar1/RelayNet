@@ -146,9 +146,9 @@ namespace RelayNet.Tun.Windows
                     name = "RelayNet WFP Session",
                     description = "RelayNet outbound enforcement session"
                 },
-                flags = 0,
-                txnWaitTimeoutInMSec = 5000,
-                processId = 0,
+                flags = 0u,
+                txnWaitTimeoutInMSec = 5000u,
+                processId = 0u,
                 sid = IntPtr.Zero,
                 username = string.Empty,
                 kernelMode = false
@@ -169,7 +169,7 @@ namespace RelayNet.Tun.Windows
 
         private static void BeginTransaction(IntPtr engine)
         {
-            uint status = WfpNative.FwpmTransactionBegin0(engine, 0);
+            uint status = WfpNative.FwpmTransactionBegin0(engine, 0u);
             if (status != WfpNative.ERROR_SUCCESS)
                 throw new Win32Exception((int)status, "FwpmTransactionBegin0 failed.");
         }
@@ -191,7 +191,7 @@ namespace RelayNet.Tun.Windows
                     name = "RelayNet Provider",
                     description = "RelayNet WFP provider"
                 },
-                flags = 0,
+                flags = 0u,
                 providerData = IntPtr.Zero,
                 serviceName = IntPtr.Zero
             };
@@ -217,10 +217,10 @@ namespace RelayNet.Tun.Windows
                     name = "RelayNet Sublayer",
                     description = "RelayNet outbound sublayer"
                 },
-                flags = 0,
+                flags = 0u,
                 providerKey = ProviderKey,
                 providerData = default,
-                weight = 0x7FFF
+                weight = 0x7FFFu
             };
 
             uint status = WfpNative.FwpmSubLayerAdd0(engine, ref sub, IntPtr.Zero);
