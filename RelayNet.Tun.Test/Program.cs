@@ -24,12 +24,9 @@ namespace RelayNet.Tun.Test
             var platform = new WindowsTunPlatform();
             var device = await platform.CreateOrOpenAsync(config, CancellationToken.None);
             await device.StartAsync(CancellationToken.None);
-            await device.ConfigureAsync(CancellationToken.None);
+            await platform.ConfigureAsync(device, config, CancellationToken.None);
 
-            await device.EnsureKillSwitchRulesExistAsync(CancellationToken.None);
-
-            // only when you want strict no-bypass mode
-            await device.EnableKillSwitchAsync(CancellationToken.None);
+            // Kill-switch is implemented in Phase 3 (WFP).
 
             // NEW: stream-aware grouping + wrapping before packets leave the client
             var mux = new RelayNetMux();
