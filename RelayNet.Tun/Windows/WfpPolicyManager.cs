@@ -289,7 +289,7 @@ namespace RelayNet.Tun.Windows
         RolledBack = 2,
     }
 
-    internal sealed class WfpBootstrapContext
+    public sealed class WfpBootstrapContext
     {
         public bool IsControlPlaneReady { get; init; }
         public string[] RelayEndpointIps { get; init; } = Array.Empty<string>();
