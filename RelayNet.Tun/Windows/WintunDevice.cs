@@ -33,14 +33,12 @@ namespace RelayNet.Tun.Windows
         {
             ct.ThrowIfCancellationRequested();
 
-            // Already started.
             if (_session != IntPtr.Zero)
                 return ValueTask.CompletedTask;
 
             _readEvent = IntPtr.Zero;
 
             _adapter = WintunNative.WintunOpenAdapter(_config.AdapterName);
-
             if (_adapter == IntPtr.Zero)
             {
                 _adapter = WintunNative.WintunCreateAdapter(
@@ -53,7 +51,7 @@ namespace RelayNet.Tun.Windows
             {
                 int err = Marshal.GetLastWin32Error();
                 throw new InvalidOperationException(
-                    $"Failed to open or create Wintun adapter '{_config.AdapterName}'. Win32 error: {err}");
+                    $"Failed to open/create Wintun adapter '{_config.AdapterName}'. Win32 error: {err}");
             }
 
             // 2) Start Wintun packet session (NO WAITING HERE)
@@ -101,7 +99,8 @@ namespace RelayNet.Tun.Windows
             ct.ThrowIfCancellationRequested();
             throw new NotSupportedException("Kill switch is implemented by platform policy (Phase 3/wpf)");
         }
-        public async Task DisableKillSwitchAsync(CancellationToken ct)
+
+        public Task DisableKillSwitchAsync(CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
             throw new NotSupportedException("Kill switch is implemented by platform policy (Phase 3/wpf)");
@@ -218,7 +217,6 @@ namespace RelayNet.Tun.Windows
                 // Ignore cleanup errors on dispoal
             }
 
-            // Final safety reset.
             _readEvent = IntPtr.Zero;
             _session = IntPtr.Zero;
             _adapter = IntPtr.Zero;
