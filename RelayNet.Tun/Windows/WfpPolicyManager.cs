@@ -156,7 +156,7 @@ namespace RelayNet.Tun.Windows
 
             uint status = WfpNative.FwpmEngineOpen0(
                 serverName: null!,
-                authnService: 10u,
+                authnService: unchecked((uint)10),
                 authIdentity: IntPtr.Zero,
                 session: ref session,
                 engineHandle: out IntPtr engine);
