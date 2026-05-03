@@ -23,6 +23,7 @@ namespace RelayNet.Tun.Windows.Native
         internal const uint FWP_MATCH_EQUAL = 0;
 
         internal static readonly Guid FWPM_LAYER_ALE_AUTH_CONNECT_V4 = new Guid("c38d57d1-05a7-4c33-904f-7fbceee60e82");
+        internal static readonly Guid FWPM_LAYER_ALE_AUTH_CONNECT_V6 = new("4a72393b-319f-44bc-84c3-ba54dcb3b6b4");
         internal static readonly Guid FWPM_CONDITION_IP_REMOTE_ADDRESS = new Guid("b235ae9a-1d64-49b8-a44c-5ff3d9095045");
         internal static readonly Guid FWPM_CONDITION_IP_LOCAL_INTERFACE = new Guid("4cd62a49-59c3-4969-b7f3-bda5d32890a4");
 
@@ -86,7 +87,7 @@ namespace RelayNet.Tun.Windows.Native
             [FieldOffset(0)] public byte uint8;
             [FieldOffset(0)] public ushort uint16;
             [FieldOffset(0)] public uint uint32;
-            [FieldOffset(0)] public uint uint64;
+            [FieldOffset(0)] public ulong uint64;
             [FieldOffset(0)] public IntPtr byteArray16;
         }
 

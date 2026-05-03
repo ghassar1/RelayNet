@@ -52,6 +52,7 @@ namespace RelayNet.Tun.Windows
                 CommitTransaction(engine);
                 txStarted = false;
                 SaveManagedFilterIds(createdFilterIds);
+                VerifyEnforcementState(createdFilterIds);
                 _state = WfpPolicyState.Enforced;
               
             }
@@ -249,30 +250,27 @@ namespace RelayNet.Tun.Windows
             { 
                 if(!IPAddress.TryParse(relayIp, out IPAddress? ip) || ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                     continue;
-                byte[] ipBytes = ip.GetAddressBytes();
-                byte[] v6Mapped = new byte[16];
-                ipBytes.CopyTo(v6Mapped, 12); 
 
-                var ipBlob = new WfpNative.FWP_BYTE_ARRAY16 { byteArray16 = v6Mapped };
-                IntPtr ipPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WfpNative.FWP_BYTE_ARRAY16>());
-                IntPtr condPtr = IntPtr.Zero;
+                IntPtr conditionPtr = IntPtr.Zero;
+                IntPtr valuePtr = IntPtr.Zero;
+
                 try
                 {
-                    Marshal.StructureToPtr(ipBlob, ipPtr, false);
-
+                    var conditionValue = BuildRemoteAddressConditionValue(ip, out valuePtr);
                     var condition = new WfpNative.FWPM_FILTER_CONDITION0
                     {
                         // check overflow
                         fieldKey = WfpNative.FWPM_CONDITION_IP_REMOTE_ADDRESS,
                         matchType = WfpNative.FWP_MATCH_EQUAL,
-                        conditionValue = new WfpNative.FWP_CONDITION_VALUE0
-                        {
-                            type = WfpNative.FWP_BYTE_ARRAY16_TYPE,
-                            value = new WfpNative.FWP_CONDITION_VALUE0_UNION { byteArray16 = ipPtr }
-                        }
+                        conditionValue = conditionValue
                     };
-                    condPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WfpNative.FWPM_FILTER_CONDITION0>());
-                    Marshal.StructureToPtr(condition, condPtr, false);
+
+                    conditionPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WfpNative.FWPM_FILTER_CONDITION0>());
+                    Marshal.StructureToPtr(condition, conditionPtr, false);
+
+                    Guid layer = ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                        ? WfpNative.FWPM_LAYER_ALE_AUTH_CONNECT_V4
+                        : WfpNative.FWPM_LAYER_ALE_AUTH_CONNECT_V6;
 
                     var filter = new WfpNative.FWPM_FILTER0
                     {
@@ -285,19 +283,18 @@ namespace RelayNet.Tun.Windows
                         flags = 0u,
                         providerKey = IntPtr.Zero,
                         providerData = default,
-                        layerKey = WfpNative.FWPM_LAYER_ALE_AUTH_CONNECT_V4,
+                        layerKey = layer,
                         subLayerKey = SublayerKey,
                         weight = new WfpNative.FWP_VALUE0 { type = WfpNative.FWP_EMPTY},
                         numFilterConditions = 1, 
-                        filterCondition = condPtr,
+                        filterCondition = conditionPtr,
                         action = new WfpNative.FWPM_ACTION0 { type = WfpNative.FWP_ACTION_PERMIT, filterType = Guid.Empty }
                     };
                     AddFilter(engine, ref filter, createdFilterIds);
                 }
-                finally { 
-                    if (condPtr != IntPtr.Zero)
-                           Marshal.FreeHGlobal(condPtr);
-                    Marshal.FreeHGlobal(ipPtr);
+                finally {
+                    if (conditionPtr != IntPtr.Zero) Marshal.FreeHGlobal(conditionPtr);
+                    if (valuePtr != IntPtr.Zero) Marshal.FreeHGlobal(valuePtr);
                 }
             }
         }
@@ -306,7 +303,7 @@ namespace RelayNet.Tun.Windows
         {
             int ifIndex = ResolveWintunInterfaceIndex(_config.AdapterName);
 
-            var allowCond = new WfpNative.FWPM_FILTER_CONDITION0
+            var allowCondition = new WfpNative.FWPM_FILTER_CONDITION0
             { 
                 fieldKey = WfpNative.FWPM_CONDITION_IP_LOCAL_INTERFACE,
                 matchType = WfpNative.FWP_MATCH_EQUAL,
@@ -317,54 +314,73 @@ namespace RelayNet.Tun.Windows
                 }
             }; 
 
-            IntPtr allowConfPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WfpNative.FWPM_FILTER_CONDITION0>());
+            IntPtr allowPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WfpNative.FWPM_FILTER_CONDITION0>());
             try {
-                Marshal.StructureToPtr(allowCond, allowConfPtr, false);
-                var allowFilter = new WfpNative.FWPM_FILTER0
-                {
-                    filterKey = Guid.NewGuid(),
-                    displayData = new WfpNative.FWPM_DISPLAY_DATA0
-                    {
-                        name = $"RelayNet Allow Wintun",
-                        description = $"Allow traffic from Wintun interface"
-                    },
-                    flags = 0u,
-                    providerKey = IntPtr.Zero,
-                    providerData = default,
-                    layerKey = WfpNative.FWPM_LAYER_ALE_AUTH_CONNECT_V4,
-                    subLayerKey = SublayerKey,
-                    weight = new WfpNative.FWP_VALUE0 { type = WfpNative.FWP_EMPTY },
-                    numFilterConditions = 1,
-                    filterCondition = allowConfPtr,
-                    action = new WfpNative.FWPM_ACTION0 { type = WfpNative.FWP_ACTION_PERMIT, filterType = Guid.Empty }
-                };
-                AddFilter(engine, ref allowFilter, createdFilterIds);
+                Marshal.StructureToPtr(allowCondition, allowPtr, false);
+
+                AddAllowAndBlockPair(engine, WfpNative.FWPM_LAYER_ALE_AUTH_CONNECT_V4, allowPtr, createdFilterIds);
+                AddAllowAndBlockPair(engine, WfpNative.FWPM_LAYER_ALE_AUTH_CONNECT_V6, allowPtr, createdFilterIds);
+
             }
             finally { 
-             Marshal.FreeHGlobal(allowConfPtr);
+             Marshal.FreeHGlobal(allowPtr);
             }
+        }
+        private static void AddAllowAndBlockPair(IntPtr engine, Guid layerKey, IntPtr allowConditionPtr, List<ulong> createdFilterIds) {
+            var allowFilter = new WfpNative.FWPM_FILTER0
+            {
+                filterKey = Guid.NewGuid(),
+                displayData = new WfpNative.FWPM_DISPLAY_DATA0 { name = "RelayNet Allow Wintun Egress", description = "Allow outbound connects on Wintun interface" },
+                flags = 0u,
+                providerKey = IntPtr.Zero,
+                providerData = default,
+                layerKey = layerKey,
+                subLayerKey = SublayerKey,
+                weight = new WfpNative.FWP_VALUE0 { type = WfpNative.FWP_UINT64, value = new WfpNative.FWP_VALUE0_UNION { uint64 = 100UL } },
+                numFilterConditions = 1,
+                filterCondition = allowConditionPtr,
+                action = new WfpNative.FWPM_ACTION0 { type = WfpNative.FWP_ACTION_PERMIT, filterType = Guid.Empty },
+            };
+            AddFilter(engine, ref allowFilter, createdFilterIds);
 
             var blockFilter = new WfpNative.FWPM_FILTER0
             {
                 filterKey = Guid.NewGuid(),
-                displayData = new WfpNative.FWPM_DISPLAY_DATA0
-                {
-                    name = $"RelayNet Block Non-Wintun Egress",
-                    description = $"Block all remaining outbound connects"
-                },
+                displayData = new WfpNative.FWPM_DISPLAY_DATA0 { name = "RelayNet Block Non-Wintun Egress", description = "Block all remaining outbound connects" },
                 flags = 0u,
                 providerKey = IntPtr.Zero,
                 providerData = default,
-                layerKey = WfpNative.FWPM_LAYER_ALE_AUTH_CONNECT_V4,
+                layerKey = layerKey,
                 subLayerKey = SublayerKey,
-                weight = new WfpNative.FWP_VALUE0 { type = WfpNative.FWP_UINT64, value = new WfpNative.FWP_VALUE0_UNION { uint64 = 10 } },
+                weight = new WfpNative.FWP_VALUE0 { type = WfpNative.FWP_UINT64, value = new WfpNative.FWP_VALUE0_UNION { uint64 = 10UL } },
                 numFilterConditions = 0,
                 filterCondition = IntPtr.Zero,
-                action = new WfpNative.FWPM_ACTION0 { type = WfpNative.FWP_ACTION_BLOCK, filterType = Guid.Empty }
+                action = new WfpNative.FWPM_ACTION0 { type = WfpNative.FWP_ACTION_BLOCK, filterType = Guid.Empty },
             };
             AddFilter(engine, ref blockFilter, createdFilterIds);
+
         }
 
+        private static WfpNative.FWP_CONDITION_VALUE0 BuildRemoteAddressConditionValue(IPAddress ip, out IntPtr valuePtr)
+        {
+            byte[] bytes = ip.GetAddressBytes();
+            if (bytes.Length == 4)
+            {
+                byte[] mapped = new byte[16];
+                bytes.CopyTo(mapped, 12);
+                bytes = mapped;
+            }
+
+            var blob = new WfpNative.FWP_BYTE_ARRAY16 { byteArray16 = bytes };
+            valuePtr = Marshal.AllocHGlobal(Marshal.SizeOf<WfpNative.FWP_BYTE_ARRAY16>());
+            Marshal.StructureToPtr(blob, valuePtr, false);
+
+            return new WfpNative.FWP_CONDITION_VALUE0
+            {
+                type = WfpNative.FWP_BYTE_ARRAY16_TYPE,
+                value = new WfpNative.FWP_CONDITION_VALUE0_UNION { byteArray16 = valuePtr }
+            };
+         }
         private static void RemoveManagedFilters(IntPtr engine)
         {
             foreach (ulong id in LoadManagedFilterIds())
@@ -413,7 +429,17 @@ namespace RelayNet.Tun.Windows
 
             createdFilterIds.Add(id);
         }
+        private static void VerifyEnforcementState(IReadOnlyCollection<ulong> createdFilterIds) {
+            if (createdFilterIds.Count < 4)
+                throw new InvalidOperationException("WFP enforcement created too few filters; enforcement verification failed.");
 
+                if (!File.Exists(FilterStatePath))
+                throw new InvalidOperationException("WFP enforcement filter ID state file was not persisted.");
+
+            int persisted = File.ReadAllLines(FilterStatePath).Count(line => !string.IsNullOrWhiteSpace(line));
+            if (persisted != createdFilterIds.Count)
+                throw new InvalidOperationException($"WFP enforcement filter persistence mismatch (expected {createdFilterIds.Count}, got {persisted}).");
+        }
         private static IEnumerable<ulong> LoadManagedFilterIds()
         { 
             if(!File.Exists(FilterStatePath))
