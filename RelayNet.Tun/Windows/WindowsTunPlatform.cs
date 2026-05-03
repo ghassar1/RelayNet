@@ -1,6 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace RelayNet.Tun.Windows
 {
@@ -20,6 +20,7 @@ namespace RelayNet.Tun.Windows
             return Task.FromResult(device);
 
         }
+
         public Task ConfigureAsync(ITunDevice device, TunConfig config, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(device);
