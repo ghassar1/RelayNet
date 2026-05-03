@@ -7,8 +7,8 @@ namespace RelayNet.Tun.Windows.Native
     {
         private const string DllName = "fwpuclnt.dll";
 
-        internal const uint RPC_C_AUTHN_WINNT = 10u;
-        internal const uint ERROR_SUCCESS = 0;
+        internal const int RPC_C_AUTHN_WINNT = 10;
+        internal const int ERROR_SUCCESS = 0;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         internal struct FWPM_DISPLAY_DATA0
@@ -59,35 +59,35 @@ namespace RelayNet.Tun.Windows.Native
         }
 
         [DllImport(DllName, CharSet = CharSet.Unicode)]
-        internal static extern uint FwpmEngineOpen0(
+        internal static extern int FwpmEngineOpen0(
             string serverName,
-            uint authnService,
+            int authnService,
             IntPtr authIdentity,
             ref FWPM_SESSION0 session,
             out IntPtr engineHandle);
 
         [DllImport(DllName)]
-        internal static extern uint FwpmEngineClose0(IntPtr engineHandle);
+        internal static extern int FwpmEngineClose0(IntPtr engineHandle);
 
         [DllImport(DllName)]
-        internal static extern uint FwpmTransactionBegin0(IntPtr engineHandle, uint flags);
+        internal static extern int FwpmTransactionBegin0(IntPtr engineHandle, uint flags);
 
         [DllImport(DllName)]
-        internal static extern uint FwpmTransactionCommit0(IntPtr engineHandle);
+        internal static extern int FwpmTransactionCommit0(IntPtr engineHandle);
 
         [DllImport(DllName)]
-        internal static extern uint FwpmTransactionAbort0(IntPtr engineHandle);
+        internal static extern int FwpmTransactionAbort0(IntPtr engineHandle);
 
         [DllImport(DllName)]
-        internal static extern uint FwpmProviderAdd0(IntPtr engineHandle, ref FWPM_PROVIDER0 provider, IntPtr sd);
+        internal static extern int FwpmProviderAdd0(IntPtr engineHandle, ref FWPM_PROVIDER0 provider, IntPtr sd);
 
         [DllImport(DllName)]
-        internal static extern uint FwpmSubLayerAdd0(IntPtr engineHandle, ref FWPM_SUBLAYER0 subLayer, IntPtr sd);
+        internal static extern int FwpmSubLayerAdd0(IntPtr engineHandle, ref FWPM_SUBLAYER0 subLayer, IntPtr sd);
 
         [DllImport(DllName)]
-        internal static extern uint FwpmProviderDeleteByKey0(IntPtr engineHandle, ref Guid key);
+        internal static extern int FwpmProviderDeleteByKey0(IntPtr engineHandle, ref Guid key);
 
         [DllImport(DllName)]
-        internal static extern uint FwpmSubLayerDeleteByKey0(IntPtr engineHandle, ref Guid key);
+        internal static extern int FwpmSubLayerDeleteByKey0(IntPtr engineHandle, ref Guid key);
     }
 }

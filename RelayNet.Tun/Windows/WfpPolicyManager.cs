@@ -154,9 +154,9 @@ namespace RelayNet.Tun.Windows
                 kernelMode = false
             };
 
-            uint status = WfpNative.FwpmEngineOpen0(
+            int status = WfpNative.FwpmEngineOpen0(
                 serverName: null!,
-                authnService: unchecked((uint)10),
+                authnService: WfpNative.RPC_C_AUTHN_WINNT,
                 authIdentity: IntPtr.Zero,
                 session: ref session,
                 engineHandle: out IntPtr engine);
@@ -169,14 +169,14 @@ namespace RelayNet.Tun.Windows
 
         private static void BeginTransaction(IntPtr engine)
         {
-            uint status = WfpNative.FwpmTransactionBegin0(engine, 0u);
+            int status = WfpNative.FwpmTransactionBegin0(engine, 0);
             if (status != WfpNative.ERROR_SUCCESS)
                 throw new Win32Exception((int)status, "FwpmTransactionBegin0 failed.");
         }
 
         private static void CommitTransaction(IntPtr engine)
         {
-            uint status = WfpNative.FwpmTransactionCommit0(engine);
+            int status = WfpNative.FwpmTransactionCommit0(engine);
             if (status != WfpNative.ERROR_SUCCESS)
                 throw new Win32Exception((int)status, "FwpmTransactionCommit0 failed.");
         }
@@ -196,12 +196,12 @@ namespace RelayNet.Tun.Windows
                 serviceName = IntPtr.Zero
             };
 
-            uint status = WfpNative.FwpmProviderAdd0(engine, ref provider, IntPtr.Zero);
+            int status = WfpNative.FwpmProviderAdd0(engine, ref provider, IntPtr.Zero);
             if (status == WfpNative.ERROR_SUCCESS)
             {
                 // Created by current apply transaction.
             }
-            else if (status != 0x80320009) // already exists
+            else if (status != unchecked((int)0x80320009)) // already exists
             {
                 throw new Win32Exception((int)status, "FwpmProviderAdd0 failed.");
             }
@@ -223,12 +223,12 @@ namespace RelayNet.Tun.Windows
                 weight = (ushort)0x7FFF
             };
 
-            uint status = WfpNative.FwpmSubLayerAdd0(engine, ref sub, IntPtr.Zero);
+            int status = WfpNative.FwpmSubLayerAdd0(engine, ref sub, IntPtr.Zero);
             if (status == WfpNative.ERROR_SUCCESS)
             {
                 // Created by current apply transaction.
             }
-            else if (status != 0x8032000A) // already exists
+            else if (status != unchecked((int)0x8032000A)) // already exists
             {
                 throw new Win32Exception((int)status, "FwpmSubLayerAdd0 failed.");
             }
@@ -258,16 +258,16 @@ namespace RelayNet.Tun.Windows
         private static void RemoveSublayer(IntPtr engine)
         {
             Guid key = SublayerKey;
-            uint status = WfpNative.FwpmSubLayerDeleteByKey0(engine, ref key);
-            if (status != WfpNative.ERROR_SUCCESS && status != 0x80320003) // not found
+            int status = WfpNative.FwpmSubLayerDeleteByKey0(engine, ref key);
+            if (status != WfpNative.ERROR_SUCCESS && status != unchecked((int)0x80320003)) // not found
                 throw new Win32Exception((int)status, "FwpmSubLayerDeleteByKey0 failed.");
         }
 
         private static void RemoveProvider(IntPtr engine)
         {
             Guid key = ProviderKey;
-            uint status = WfpNative.FwpmProviderDeleteByKey0(engine, ref key);
-            if (status != WfpNative.ERROR_SUCCESS && status != 0x80320003) // not found
+            int status = WfpNative.FwpmProviderDeleteByKey0(engine, ref key);
+            if (status != WfpNative.ERROR_SUCCESS && status != unchecked((int)0x80320003)) // not found
                 throw new Win32Exception((int)status, "FwpmProviderDeleteByKey0 failed.");
         }
 
