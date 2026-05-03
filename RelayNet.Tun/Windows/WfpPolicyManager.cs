@@ -156,7 +156,7 @@ namespace RelayNet.Tun.Windows
 
             uint status = WfpNative.FwpmEngineOpen0(
                 serverName: null!,
-                authnService: WfpNative.RPC_C_AUTHN_WINNT,
+                authnService: 10u,
                 authIdentity: IntPtr.Zero,
                 session: ref session,
                 engineHandle: out IntPtr engine);
@@ -220,7 +220,7 @@ namespace RelayNet.Tun.Windows
                 flags = 0u,
                 providerKey = ProviderKey,
                 providerData = default,
-                weight = 0x7FFFu
+                weight = (ushort)0x7FFF
             };
 
             uint status = WfpNative.FwpmSubLayerAdd0(engine, ref sub, IntPtr.Zero);
