@@ -32,5 +32,6 @@ namespace RelayNet.Tun
         /// Writes a raw IP packet back to the OS.
         /// </summary>
         ValueTask WritePacketAsync(ReadOnlyMemory<byte> packet, CancellationToken ct);
+        void EnsureStarted();
     }
 }

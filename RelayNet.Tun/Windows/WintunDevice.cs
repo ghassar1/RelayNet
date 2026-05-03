@@ -1,4 +1,6 @@
+﻿
 using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -9,7 +11,7 @@ using System.Threading.Tasks;
 namespace RelayNet.Tun.Windows
 {
     /// <summary>
-    /// Wintun-backed TUN device implementation.
+    /// Wintun-backed TUN device implementation. 
     /// Responsibility: packet I/O lifecycle only (start/read/write/stop).
     /// Platform is responsible for adapter/network policy configuration.
     /// </summary>
@@ -18,22 +20,23 @@ namespace RelayNet.Tun.Windows
         private readonly TunConfig _config;
 
         private IntPtr _adapter = IntPtr.Zero;
-        private IntPtr _session = IntPtr.Zero;
-        private IntPtr _readEvent = IntPtr.Zero;
 
+        private IntPtr _session = IntPtr.Zero;
+
+        private IntPtr _readEvent = IntPtr.Zero;
         public WintunDevice(TunConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
-
         public string Name => _config.AdapterName;
-
         public ValueTask StartAsync(CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
 
             if (_session != IntPtr.Zero)
                 return ValueTask.CompletedTask;
+
+            _readEvent = IntPtr.Zero;
 
             _adapter = WintunNative.WintunOpenAdapter(_config.AdapterName);
             if (_adapter == IntPtr.Zero)
@@ -51,20 +54,20 @@ namespace RelayNet.Tun.Windows
                     $"Failed to open/create Wintun adapter '{_config.AdapterName}'. Win32 error: {err}");
             }
 
-            _session = WintunNative.WintunStartSession(_adapter, _config.SessionCapacityBytes);
+            // 2) Start Wintun packet session (NO WAITING HERE)
+            _session = WintunNative.WintunStartSession(_adapter,_config.SessionCapacityBytes);
+
             if (_session == IntPtr.Zero)
             {
                 int err = Marshal.GetLastWin32Error();
                 WintunNative.WintunCloseAdapter(_adapter);
                 _adapter = IntPtr.Zero;
-
-                throw new InvalidOperationException(
-                    $"Failed to start Wintun session for '{_config.AdapterName}'. Win32 error: {err}");
+                throw new InvalidOperationException($"Failed to start Wintun session for {_config.AdapterName}");
             }
 
             _readEvent = WintunNative.WintunGetReadWaitEvent(_session);
             if (_readEvent == IntPtr.Zero)
-            {
+            { 
                 int err = Marshal.GetLastWin32Error();
                 WintunNative.WintunEndSession(_session);
                 _session = IntPtr.Zero;
@@ -72,8 +75,8 @@ namespace RelayNet.Tun.Windows
                 WintunNative.WintunCloseAdapter(_adapter);
                 _adapter = IntPtr.Zero;
 
-                throw new InvalidOperationException(
-                    $"Failed to get Wintun read event for '{_config.AdapterName}'. Win32 error: {err}");
+                throw new InvalidOperationException($"Failed to get Wintun read event for '{_config.AdapterName}'. Win32 error: {err}");
+
             }
 
             return ValueTask.CompletedTask;
@@ -81,29 +84,30 @@ namespace RelayNet.Tun.Windows
 
         public Task ConfigureAsync(CancellationToken ct)
         {
-            ct.ThrowIfCancellationRequested();
-            throw new NotSupportedException("Use ITunPlatform.ConfigureAsync for adapter policy configuration.");
-        }
 
-        public Task EnsureKillSwitchRulesExistAsync(CancellationToken ct)
+            ct.ThrowIfCancellationRequested();
+            throw new NotSupportedException("Use ITunPlatform.ConfigureAsync for adapter policy configuration");
+        }
+        
+        public async Task EnsureKillSwitchRulesExistAsync(CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            throw new NotSupportedException("Kill switch is implemented by platform policy (Phase 3/WFP).");
+            throw new NotSupportedException("Kill switch is implemented by platform policy (Phase 3/wpf)");
         }
-
         public Task EnableKillSwitchAsync(CancellationToken ct)
-        {
+        { 
             ct.ThrowIfCancellationRequested();
-            throw new NotSupportedException("Kill switch is implemented by platform policy (Phase 3/WFP).");
+            throw new NotSupportedException("Kill switch is implemented by platform policy (Phase 3/wpf)");
         }
 
         public Task DisableKillSwitchAsync(CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            throw new NotSupportedException("Kill switch is implemented by platform policy (Phase 3/WFP).");
+            throw new NotSupportedException("Kill switch is implemented by platform policy (Phase 3/wpf)");
         }
 
-        public async IAsyncEnumerable<ReadOnlyMemory<byte>> ReadPacketAsync([EnumeratorCancellation] CancellationToken ct)
+        public async IAsyncEnumerable<ReadOnlyMemory<byte>> ReadPacketAsync(
+         [EnumeratorCancellation] CancellationToken ct)
         {
             EnsureStarted();
 
@@ -131,6 +135,7 @@ namespace RelayNet.Tun.Windows
 
                         if (err == ERROR_NO_MORE_ITEMS)
                         {
+
                             int signaled = WaitHandle.WaitAny(new WaitHandle[] { readEvent, ct.WaitHandle });
                             if (signaled == 1)
                                 ct.ThrowIfCancellationRequested();
@@ -174,9 +179,8 @@ namespace RelayNet.Tun.Windows
                 throw new InvalidOperationException($"WintunAllocateSendPacket failed. Win32 error: {err}");
             }
 
-            byte[] temp = packet.ToArray();
+            byte[] temp = packet.ToArray(); 
             Marshal.Copy(temp, 0, sendPtr, temp.Length);
-            WintunNative.WintunSendPacket(_session, sendPtr);
 
             return ValueTask.CompletedTask;
         }
@@ -210,7 +214,7 @@ namespace RelayNet.Tun.Windows
             }
             catch
             {
-                // Ignore cleanup errors on disposal.
+                // Ignore cleanup errors on dispoal
             }
 
             _readEvent = IntPtr.Zero;
@@ -222,6 +226,11 @@ namespace RelayNet.Tun.Windows
         {
             if (_session == IntPtr.Zero)
                 throw new InvalidOperationException("Wintun session is not started. Call StartAsync first.");
+        }
+
+        void ITunDevice.EnsureStarted()
+        {
+            EnsureStarted();
         }
     }
 }
