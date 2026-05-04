@@ -28,7 +28,7 @@ namespace RelayNet.Tun.Windows
 
         public WfpPolicyState State => _state;
 
-        public Task ApplyAsync(WfpBootsrapContext context, CancellationToken ct)
+        public Task ApplyAsync(WfpBootstrapContext context, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
             EnsureWindowsAndContext(context);
@@ -59,9 +59,9 @@ namespace RelayNet.Tun.Windows
             catch
             {
                 if (engine != IntPtr.Zero && txStarted)
-                    AbortTransactionBerstEffort(engine);
+                    AbortTransactionBestEffort(engine);
 
-                _state = WfpPolicyState.RolledBackl;
+                _state = WfpPolicyState.RolledBack;
                 throw;
             }
             finally {
@@ -93,7 +93,7 @@ namespace RelayNet.Tun.Windows
             }finally
             {
                 if (engine != IntPtr.Zero && txStarted)
-                    AbortTransactionBerstEffort(engine);
+                    AbortTransactionBestEffort(engine);
 
                 if (engine != IntPtr.Zero)
                     CloseEngineBestEffort(engine);
@@ -127,7 +127,7 @@ namespace RelayNet.Tun.Windows
             }
             finally { 
                     if(engine != IntPtr.Zero && txStarted)
-                        AbortTransactionBerstEffort(engine);
+                        AbortTransactionBestEffort(engine);
 
                     if (engine != IntPtr.Zero)
                         CloseEngineBestEffort(engine);
@@ -136,7 +136,7 @@ namespace RelayNet.Tun.Windows
         }
 
 
-        private static void EnsureWindowsAndContext(WfpBootsrapContext context)
+        private static void EnsureWindowsAndContext(WfpBootstrapContext context)
         {
             EnsureWindows();
             ArgumentNullException.ThrowIfNull(context);
@@ -244,7 +244,7 @@ namespace RelayNet.Tun.Windows
         }
 
 
-        private static void InstallBootstrapAllowFilters(IntPtr engine, WfpBootsrapContext context, List<ulong> createdFilterIds)
+        private static void InstallBootstrapAllowFilters(IntPtr engine, WfpBootstrapContext context, List<ulong> createdFilterIds)
         {
             foreach (string relayIp in context.RelayEndpointIps.Distinct(StringComparer.OrdinalIgnoreCase))
             { 
@@ -464,7 +464,7 @@ namespace RelayNet.Tun.Windows
             if(File.Exists(FilterStatePath))
                 File.Delete(FilterStatePath);
         }
-        private static void AbortTransactionBerstEffort(IntPtr engine)
+        private static void AbortTransactionBestEffort(IntPtr engine)
         {
             _ = WfpNative.FwpmTransactionAbort0(engine);
         }
@@ -477,10 +477,10 @@ namespace RelayNet.Tun.Windows
     {
         Prepared = 0,
         Enforced = 1,
-        RolledBackl = 2,
+        RolledBack = 2,
     }
 
-    public sealed class WfpBootsrapContext
+    public sealed class WfpBootstrapContext
     {
         public bool IsControlPlaneReady { get; init; }
         public string[] RelayEndpointIps { get; init; } = Array.Empty<string>();

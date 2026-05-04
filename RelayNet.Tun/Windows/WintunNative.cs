@@ -15,7 +15,7 @@ namespace RelayNet.Tun.Windows
     internal static class WintunNative
     {
         // Note: 
-        // These signatures are placeholders until we align with the exact Wintun API you use.
+        // Signatures aligned to Wintun API as documented in wintun.h (v0.14.x).
         // keep this file "native-only": DllImport + structs. 
 
         private const string DllName = "wintun"; // resolves to wintun.dll via runtimes/<rid>/native/
@@ -39,26 +39,26 @@ namespace RelayNet.Tun.Windows
         // ---- Adapter management ----
 
         // WINTUN_ADAPTER_HANDLE WintunCreatedAdapter(const WCHAR* Name, const WCHAR* TunnelType, const GUID* RequestedGUID);
-        // Example placeholders (do not rely on these exact signaturers yet):
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode, SetLastError = true)]
+        // WINTUN_ADAPTER_HANDLE WintunCreateAdapter(...):
+        [DllImport(DllName, CallingConvention = CallingConvention.Winapi, CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern IntPtr WintunCreateAdapter(
             [MarshalAs(UnmanagedType.LPWStr)] string name,
             [MarshalAs(UnmanagedType.LPWStr)] string tunnelType,
             IntPtr requestGuid); // pass IntPtr.Zero or pointer to GUID (we'll warp this later if needed)
 
         // WINTUN_ADAPTER_HANDLE WintunOpenAdapter(const WCHAR* Name); 
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode, SetLastError = true)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Winapi, CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern IntPtr WintunOpenAdapter(
             [MarshalAs(UnmanagedType.LPWStr)] string name);
 
 
         // void WintunCloseAdapter(WINTUN_ADAPTER_HANDLE Adapter); 
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Winapi)]
         internal static extern void WintunCloseAdapter(IntPtr adapterHandle);
 
         // void WintunGetAdapterLUID(WINTUN_ADAPTER_HANDLE Adapter, NET_LUID* Luid); 
         // NET_LUID is 64-bit on Windows; represented as ulong. 
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Winapi)]
         internal static extern void WintunGetAdapterLuid(IntPtr adapterHandle, out ulong luid);
 
 
@@ -70,7 +70,7 @@ namespace RelayNet.Tun.Windows
 
 
         // void WintunEndSession(WINTUN_SESSION_HANDLE Session);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Winapi)]
         internal static extern void WintunEndSession(IntPtr sessionHandle);
 
         // HANDLE WintunGetReadWaitEvent(WINTUN_SESSION_HANDLE Session);
@@ -84,18 +84,18 @@ namespace RelayNet.Tun.Windows
         internal static extern IntPtr WintunReceivePacket(IntPtr session, out uint packetSize);
 
         // void WintunReleaseReceivePacket(WINTUN_SESSION_HANDLE Session, const BYTE* Packet);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Winapi)]
         internal static extern void WintunReleaseReceivePacket(IntPtr sessionHandle, IntPtr packet);
 
         // ---- Send path ----
 
         // BYTE* WintunAllocateSendPacket(WINTUN_SESSION_HANDLE Session, DWORD PacketSize);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Winapi)]
         internal static extern IntPtr WintunAllocateSendPacket(IntPtr sessionHandle, uint packetSize);
 
 
         // void WintunSendPacket(WINTUN_SESSION_HANDLE Session, const BYTE* Packet);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllName, CallingConvention = CallingConvention.Winapi)]
         internal static extern void WintunSendPacket(IntPtr sessionHandle, IntPtr packet);
 
     }

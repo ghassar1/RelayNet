@@ -45,6 +45,55 @@ namespace RelayNet.Tun.Windows.Native
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int GetBestRoute(uint dwDestAddr, uint dwSourceAddr, out MIB_IPFORWARDROW pBestRoute);
 
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct SOCKADDR_INET
+        {
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 28)]
+            public byte[] Data;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct MIB_IPFORWARD_ROW2
+        {
+            public ulong InterfaceLuid;
+            public uint InterfaceIndex;
+            public SOCKADDR_INET DestinationPrefixPrefix;
+            public byte DestinationPrefixLength;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+            public byte[] Pad1;
+            public SOCKADDR_INET NextHop;
+            public byte SitePrefixLength;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+            public byte[] Pad2;
+            public uint ValidLifetime;
+            public uint PreferredLifetime;
+            public uint Metric;
+            public uint Protocol;
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool Loopback;
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool AutoconfigureAddress;
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool Publish;
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool Immortal;
+            public uint Age;
+            public uint Origin;
+        }
+
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern int CreateIpForwardEntry2(ref MIB_IPFORWARD_ROW2 row);
+        
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern int GetBestRoute2(
+            IntPtr interfaceLuid,
+            uint interfaceIndex,
+            IntPtr sourceAddress,
+            ref SOCKADDR_INET destinationAddress,
+            uint addressSortOptions,
+            out MIB_IPFORWARD_ROW2 bestRoute,
+            IntPtr bestSourceAddress);
+
         internal static void AddOrUpdateDefaultRouteIpv4(int interfaceIndex, IPAddress nextHop, int metric)
         {
 
@@ -83,6 +132,36 @@ namespace RelayNet.Tun.Windows.Native
             }
             throw new Win32Exception(createErr, $"CreateIpForwardEntry failed for interface {interfaceIndex}.");
         }
+        internal static void AddOrUpdateDefaultRouteIpv6(int interfaceIndex, IPAddress nextHop, int metric)
+        {
+            if (nextHop.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+                throw new ArgumentException("Gateway must be IPv6.", nameof(nextHop));
+
+            var row = new MIB_IPFORWARD_ROW2
+            {
+                InterfaceLuid = 0,
+                InterfaceIndex = (uint)interfaceIndex,
+                DestinationPrefixPrefix = new SOCKADDR_INET { Data = new byte[28] },
+                DestinationPrefixLength = 0,
+                Pad1 = new byte[3],
+                NextHop = new SOCKADDR_INET { Data = new byte[28] },
+                SitePrefixLength = 0,
+                Pad2 = new byte[3],
+                ValidLifetime = uint.MaxValue,
+                PreferredLifetime = uint.MaxValue,
+                Metric = checked((uint)Math.Max(metric, 1)),
+                Protocol = 3
+            };
+
+            byte[] b = nextHop.GetAddressBytes();
+            Array.Copy(b, 0, row.NextHop.Data, 8, 16);
+            row.NextHop.Data[0] = 23; // AF_INET6
+
+            int err = CreateIpForwardEntry2(ref row);
+            if (err != 0 && err != ERROR_OBJECT_ALREADY_EXISTS && err != 183)
+                throw new Win32Exception(err, $"CreateIpForwardEntry2 failed for interface {interfaceIndex}.");
+        }
+
         internal static uint? AddOrUpdateIPv4Address(int interfaceIndex, IPAddress address, IPAddress mask)
         {
            if(address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
@@ -115,6 +194,28 @@ namespace RelayNet.Tun.Windows.Native
                 throw new Win32Exception(err, $"GetBestRoute failed for destination {destination}.");
 
             return checked((int)bestRoute.dwForwardIfIndex);
+        }
+
+        internal static int GetBestInterfaceForDestinationIp6(IPAddress destination)
+        {
+            if (destination.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+                throw new ArgumentException("Destination must be IPv6", nameof(destination));
+
+            var sockaddr = CreateSockAddrInetV6(destination);
+            int err = GetBestRoute2(IntPtr.Zero, 0, IntPtr.Zero, ref sockaddr, 0, out var bestRoute, IntPtr.Zero);
+            if (err != 0)
+                throw new Win32Exception(err, $"GetBestRoute2 failed for destination {destination}.");
+
+            return checked((int)bestRoute.InterfaceIndex);
+        }
+
+        private static SOCKADDR_INET CreateSockAddrInetV6(IPAddress address)
+        {
+            var sockAddr = new SOCKADDR_INET { Data = new byte[28] };
+            sockAddr.Data[0] = 23; // AF_INET6
+            byte[] bytes = address.GetAddressBytes();
+            Array.Copy(bytes, 0, sockAddr.Data, 8, 16);
+            return sockAddr;
         }
         private static uint ToNetworkOrderUnit32(IPAddress address)
         {

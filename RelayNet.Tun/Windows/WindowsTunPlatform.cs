@@ -31,15 +31,15 @@ namespace RelayNet.Tun.Windows
             return manager.ConfigureAdapterAndRoutesAsync(ct);
         }
 
-        public async Task EnableKillSwitchAsync(TunConfig config, WfpBootsrapContext bootsrapContext, CancellationToken ct)
+        public async Task EnableKillSwitchAsync(TunConfig config, WfpBootstrapContext bootstrapContext, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(config);
-            ArgumentNullException.ThrowIfNull(bootsrapContext);
+            ArgumentNullException.ThrowIfNull(bootstrapContext);
             ct.ThrowIfCancellationRequested();
 
             var wfp = new WfpPolicyManager(config);
             await wfp.CleanupStaleArtifactsAsync(ct);
-            await wfp.ApplyAsync(bootsrapContext, ct);
+            await wfp.ApplyAsync(bootstrapContext, ct);
         }
     }
 }
