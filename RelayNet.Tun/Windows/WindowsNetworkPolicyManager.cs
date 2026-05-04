@@ -2,10 +2,13 @@
 using RelayNet.Tun.Windows.Native;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.Versioning;
 using System.Text;
+using static RelayNet.Tun.Windows.Native.IpHlpApi;
 
 namespace RelayNet.Tun.Windows
 {
@@ -43,7 +46,10 @@ namespace RelayNet.Tun.Windows
 
                 var gateway4 = IPAddress.Parse(_config.GatewayV4);
 
+                var gateway6 = IPAddress.Parse(_config.GatewayV6);
+
                 IpHlpApi.AddOrUpdateDefaultRouteIpv4(interfaceIndex, gateway4, metric: 3);
+                IpHlpApi.AddOrUpdateDefaultRouteIpv6(interfaceIndex, gateway6, metric: 3);
                 VerifyDefaultRouteOwner(interfaceIndex);
                 return Task.CompletedTask;
 
@@ -68,8 +74,12 @@ namespace RelayNet.Tun.Windows
                 throw new InvalidOperationException($"Default route verification failed. Expected ifIndex={expectedInterfaceIndex}," +
                     $" got best route ifIndex value {best1} and {best2}.");
             }
-        }
 
+            int bestv6 = IpHlpApi.GetBestInterfaceForDestinationIpV6((IPAddress.Parse("2606:4700:4700::1111")));
+            if (bestv6 != expectedInterfaceIndex)
+                throw new InvalidOperationException($"IPv6 default route verification failed. Expected ifIndex={expectedInterfaceIndex}, got {bestv6}.");
+        }
+       
         private static uint? ApplyIpv4Address(int interfaceIndex, string ip, int prefixLength)
         {
             var address = IPAddress.Parse(ip);
@@ -190,7 +200,7 @@ namespace RelayNet.Tun.Windows
                     g4.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                 throw new FormatException($"Invalid IPv4 gateway: {_config.GatewayV4}");
 
-            if (IPAddress.TryParse(_config.GatewayV6, out IPAddress? g6) ||
+            if (!IPAddress.TryParse(_config.GatewayV6, out IPAddress? g6) ||
                     g6.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
                 throw new FormatException($"Invalid IPv6 gateway: {_config.GatewayV6}");
         }

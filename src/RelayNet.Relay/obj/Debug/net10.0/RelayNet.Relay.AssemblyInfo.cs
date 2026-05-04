@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RelayNet.Relay")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+36f8616e67e993a1ccecdc88225a262298a6dd05")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e50a8f264e686553d8cef8ccae3a43b18935d050")]
 [assembly: System.Reflection.AssemblyProductAttribute("RelayNet.Relay")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RelayNet.Relay")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
