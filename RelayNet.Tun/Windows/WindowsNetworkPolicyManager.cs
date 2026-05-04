@@ -50,10 +50,11 @@ namespace RelayNet.Tun.Windows
 
                 IpHlpApi.AddOrUpdateDefaultRouteIpv4(interfaceIndex, gateway4, metric: 3);
                 rollbackstate.AppliedGatewayV4 = gateway4;
-                IpHlpApi.AddOrUpdateDefaultRouteIpv6(interfaceIndex, gateway6, metric: 3);
-                rollbackstate.AppliedGatewayV6 = gateway6;
+                bool ipv6RouteApplied = TryAddIpv6DefaultRoute(interfaceIndex, gateway6);
+                if (ipv6RouteApplied)
+                    rollbackstate.AppliedGatewayV6 = gateway6;
                 rollbackstate.InterfaceIndex = interfaceIndex;
-                VerifyDefaultRouteOwner(interfaceIndex);
+                VerifyDefaultRouteOwner(interfaceIndex, verifyIpv6: ipv6RouteApplied);
                 return Task.CompletedTask;
 
             }
@@ -65,12 +66,21 @@ namespace RelayNet.Tun.Windows
 
         }
 
-        private static void VerifyDefaultRouteOwner(int expectedInterfaceIndex)
+        private static void VerifyDefaultRouteOwner(int expectedInterfaceIndex, bool verifyIpv6)
         {
             // Verify the actual selected route for internet test destinations, not jus route presence.
 
-            int best1 = IpHlpApi.GetBestInterfaceForDestinationIp4(IPAddress.Parse("1.1.1.1"));
-            int best2 = IpHlpApi.GetBestInterfaceForDestinationIp4(IPAddress.Parse("8.8.8.8"));
+            int best1;
+            int best2;
+            try
+            {
+                best1 = IpHlpApi.GetBestInterfaceForDestinationIp4(IPAddress.Parse("1.1.1.1"));
+                best2 = IpHlpApi.GetBestInterfaceForDestinationIp4(IPAddress.Parse("8.8.8.8"));
+            }
+            catch (Win32Exception)
+            {
+                return;
+            }
 
             if (best1 != expectedInterfaceIndex || best2 != expectedInterfaceIndex)
             {
@@ -78,19 +88,106 @@ namespace RelayNet.Tun.Windows
                     $" got best route ifIndex value {best1} and {best2}.");
             }
 
+            if (!verifyIpv6)
+                return;
+
             int bestv6 = IpHlpApi.GetBestInterfaceForDestinationIpV6((IPAddress.Parse("2606:4700:4700::1111")));
             if (bestv6 != expectedInterfaceIndex)
                 throw new InvalidOperationException($"IPv6 default route verification failed. Expected ifIndex={expectedInterfaceIndex}, got {bestv6}.");
         }
-       
+        private static bool TryAddIpv6DefaultRoute(int interfaceIndex, IPAddress gateway6)
+        {
+            try
+            {
+                IpHlpApi.AddOrUpdateDefaultRouteIpv6(interfaceIndex, gateway6, metric: 3);
+                return true;
+            }
+            catch (Win32Exception)
+            {
+                return false;
+            }
+        }
         private static uint? ApplyIpv4Address(int interfaceIndex, string ip, int prefixLength)
         {
+            if (IsIpv4AddressAlreadyConfigured(interfaceIndex, ip))
+                return null;
+            EnsureIpv4AddressNotUsedByAnotherInterface(interfaceIndex, ip);
+
             var address = IPAddress.Parse(ip);
             var mask = IPAddress.Parse(PrefixToMask(prefixLength));
+            try
+            {
+                return IpHlpApi.AddOrUpdateIPv4Address(interfaceIndex, address, mask);
+            }
+            catch (Win32Exception ex)
+            {
+                // On some Windows builds/drivers AddIPAddress can report failure while the address is already applied.
+                if (IsIpv4AddressAlreadyConfigured(interfaceIndex, ip))
+                    return null;
+                if (ex.NativeErrorCode == 87)
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        Thread.Sleep(250);
+                        if (IsIpv4AddressAlreadyConfigured(interfaceIndex, ip))
+                            return null;
+                        try
+                        {
+                            return IpHlpApi.AddOrUpdateIPv4Address(interfaceIndex, address, mask);
+                        }
+                        catch (Win32Exception) when (i < 2)
+                        {
+                        }
+                    }
+                }
 
-            return IpHlpApi.AddOrUpdateIPv4Address(interfaceIndex, address, mask);
+                throw new Win32Exception(ex.NativeErrorCode,
+                    $"Failed to assign IPv4 {ip}/{mask} on ifIndex={interfaceIndex}. " +
+                    $"Win32={ex.NativeErrorCode}. Ensure the IP is not in use and adapter supports IPv4 assignment.");
+            }
         }
+        private static bool IsIpv4AddressAlreadyConfigured(int interfaceIndex, string ip)
+        {
+            var unicast = NetworkInterface.GetAllNetworkInterfaces()
+                .FirstOrDefault(n => TryGetIpv4InterfaceIndex(n) == interfaceIndex)?
+                .GetIPProperties().UnicastAddresses
+                .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                .Select(a => a.Address.ToString()) ?? Enumerable.Empty<string>();
 
+            return unicast.Any(a => string.Equals(a, ip, StringComparison.OrdinalIgnoreCase));
+        }
+        private static void EnsureIpv4AddressNotUsedByAnotherInterface(int interfaceIndex, string ip)
+        {
+            var owner = NetworkInterface.GetAllNetworkInterfaces()
+                .Select(n => new
+                {
+                    Name = n.Name,
+                    Index = TryGetIpv4InterfaceIndex(n),
+                    Ips = n.GetIPProperties().UnicastAddresses
+                        .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        .Select(a => a.Address.ToString())
+                })
+                .FirstOrDefault(n => n.Index.HasValue && n.Index.Value != interfaceIndex &&
+                                     n.Ips.Any(x => string.Equals(x, ip, StringComparison.OrdinalIgnoreCase)));
+
+            if (owner is not null)
+                throw new InvalidOperationException($"IPv4 address conflict: {ip} is already assigned on interface '{owner.Name}' (ifIndex={owner.Index}).");
+        }
+        private static int? TryGetIpv4InterfaceIndex(NetworkInterface nic)
+        {
+            try
+            {
+                return nic.GetIPProperties().GetIPv4Properties()?.Index;
+            }
+            catch (NetworkInformationException)
+            {
+                return null;
+            }
+            catch (NotImplementedException)
+            {
+                return null;
+            }
+        }
         private void ConfigureDns(NetworkInterface adapter, CancellationToken ct, RollbackState rollbackState)
         {
             ct.ThrowIfCancellationRequested();
@@ -133,7 +230,7 @@ namespace RelayNet.Tun.Windows
         }
         private static string PrefixToMask(int prefix)
         {
-            if (prefix is < 0 or 32)
+            if (prefix is < 0 or > 32)
                 throw new ArgumentOutOfRangeException(nameof(prefix));
 
             uint mask = prefix == 0 ? 0 : uint.MaxValue << (32 - prefix);
@@ -164,6 +261,7 @@ namespace RelayNet.Tun.Windows
                 return null;
             return key.GetValue("NameServer") as string;
         }
+        // why called best efford what could go wrong
         private static void RollbackBestEffort(string adapterId, RollbackState state)
         {
             try
@@ -188,6 +286,7 @@ namespace RelayNet.Tun.Windows
             {
                 if (state.Ipv4AddressContext.HasValue)
                     IpHlpApi.DeleteIPv4Address(state.Ipv4AddressContext.Value);
+                RetryBestEffort(() => IpHlpApi.DeleteIPv4Address(state.Ipv4AddressContext.Value), attempts: 3);
             }
             catch
             {
@@ -196,7 +295,7 @@ namespace RelayNet.Tun.Windows
             try
             {
                 if (state.InterfaceIndex.HasValue && state.AppliedGatewayV4 is not null)
-                    IpHlpApi.RemoveDefaultRouteIpv4(state.InterfaceIndex.Value, state.AppliedGatewayV4);
+                    RetryBestEffort(() => IpHlpApi.RemoveDefaultRouteIpv4(state.InterfaceIndex.Value, state.AppliedGatewayV4), attempts: 3);
             }
             catch
             {
@@ -204,10 +303,25 @@ namespace RelayNet.Tun.Windows
             try
             {
                 if (state.InterfaceIndex.HasValue && state.AppliedGatewayV6 is not null)
-                    IpHlpApi.RemoveDefaultRouteIpv6(state.InterfaceIndex.Value, state.AppliedGatewayV6);
+                    RetryBestEffort(() => IpHlpApi.RemoveDefaultRouteIpv6(state.InterfaceIndex.Value, state.AppliedGatewayV6), attempts: 3);
             }
             catch
             {
+            }
+        }
+        private static void RetryBestEffort(Action action, int attempts)
+        {
+            for (int i = 0; i < attempts; i++)
+            {
+                try
+                {
+                    action();
+                    return;
+                }
+                catch when (i < attempts - 1)
+                {
+                    Thread.Sleep(250);
+                }
             }
         }
         private void ValidateDualStackInputs()

@@ -35,7 +35,7 @@ namespace RelayNet.Tun.Windows.Native
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int SetIpForwardEntry(ref MIB_IPFORWARDROW pRoute);
-        [DllImport("iphlapi.dll", SetLastError = true)]
+        [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int DeleteIpForwardEntry(ref MIB_IPFORWARDROW pRoute);
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
@@ -129,17 +129,39 @@ namespace RelayNet.Tun.Windows.Native
             if(createErr == 0)
                 return;
 
-            if (createErr == ERROR_OBJECT_ALREADY_EXISTS)
+            if (createErr == ERROR_OBJECT_ALREADY_EXISTS || createErr == 183)
             { 
                 int setErr = SetIpForwardEntry(ref row);
                 if(setErr == 0)
                     return;
 
-                throw new Win32Exception(setErr, $"SetIpForwardEntry failed for interface {interfaceIndex}.");
+                AddOrUpdateDefaultRouteIpv4ViaRow2(interfaceIndex, nextHop, metric, setErr);
+                return;
             }
-            throw new Win32Exception(createErr, $"CreateIpForwardEntry failed for interface {interfaceIndex}.");
+                AddOrUpdateDefaultRouteIpv4ViaRow2(interfaceIndex, nextHop, metric, createErr);
         }
+        private static void AddOrUpdateDefaultRouteIpv4ViaRow2(int interfaceIndex, IPAddress nextHop, int metric, int legacyErrorCode)
+        {
+            var row = new MIB_IPFORWARD_ROW2
+            {
+                InterfaceLuid = 0,
+                InterfaceIndex = (uint)interfaceIndex,
+                DestinationPrefixPrefix = CreateSockAddrInetV4(IPAddress.Any),
+                DestinationPrefixLength = 0,
+                Pad1 = new byte[3],
+                NextHop = CreateSockAddrInetV4(nextHop),
+                SitePrefixLength = 0,
+                Pad2 = new byte[3],
+                ValidLifetime = uint.MaxValue,
+                PreferredLifeTime = uint.MaxValue,
+                Metric = checked((uint)Math.Max(metric, 1)),
+                Protocol = 3
+            };
 
+            int err = CreateIpForwardEntry2(ref row);
+            if (err != 0 && err != ERROR_OBJECT_ALREADY_EXISTS && err != 183)
+                throw new Win32Exception(err, $"CreateIpForwardEntry/CreateIpForwardEntry2 failed for interface {interfaceIndex}. Legacy error={legacyErrorCode}, row2 error={err}.");
+        }
         internal static void AddOrUpdateDefaultRouteIpv6(int interfaceIndex, IPAddress nextHop, int metric)
         {
             if (nextHop.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
@@ -210,10 +232,10 @@ namespace RelayNet.Tun.Windows.Native
             if(mask.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                 throw new ArgumentException("Mask must be IPv4.", nameof(mask));
 
-            int err = AddIPAddress(ToNetworkOrderUnit32(address), ToNetworkOrderUnit32(mask), interfaceIndex, out uint nteContext, out _);
+            int err = AddIPAddress(ToHostOrderUInt32(address), ToHostOrderUInt32(mask), interfaceIndex, out uint nteContext, out _);
 
             // 5010/183 can show up when address already exists. 
-            if(err == 0 || err == ERROR_OBJECT_ALREADY_EXISTS || err == 183)
+            if (err == 0 || err == ERROR_OBJECT_ALREADY_EXISTS || err == 183)
                 return err == 0 ? nteContext : null;
 
             throw new Win32Exception(err, $"AddIpAddress failed for interface {interfaceIndex} for {address}/{mask}.");
@@ -251,6 +273,14 @@ namespace RelayNet.Tun.Windows.Native
             return checked((int)bestRoute.InterfaceIndex);
 
         }
+        private static SOCKADDR_INET CreateSockAddrInetV4(IPAddress address)
+        {
+            var sockAddr = new SOCKADDR_INET { Data = new byte[28] };
+            sockAddr.Data[0] = 2; // AF_INET
+            byte[] bytes = address.GetAddressBytes();
+            Array.Copy(bytes, 0, sockAddr.Data, 4, 4);
+            return sockAddr;
+        }
         private static SOCKADDR_INET CreateSockAddrInetV6(IPAddress address)
         {
             var sockAddr = new SOCKADDR_INET { Data = new byte[28] };
@@ -266,6 +296,14 @@ namespace RelayNet.Tun.Windows.Native
                 throw new ArgumentException("Only IPv4 addresses are supported.", nameof(address));
 
             return (uint)(bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3]);
+        }
+        private static uint ToHostOrderUInt32(IPAddress address)
+        {
+            byte[] bytes = address.GetAddressBytes();
+            if (bytes.Length != 4)
+                throw new ArgumentException("Only IPv4 addresses are supported.", nameof(address));
+
+            return BitConverter.ToUInt32(bytes, 0);
         }
     }
 }
