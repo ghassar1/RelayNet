@@ -49,7 +49,10 @@ namespace RelayNet.Tun.Windows
                 var gateway6 = IPAddress.Parse(_config.GatewayV6);
 
                 IpHlpApi.AddOrUpdateDefaultRouteIpv4(interfaceIndex, gateway4, metric: 3);
+                rollbackstate.AppliedGatewayV4 = gateway4;
                 IpHlpApi.AddOrUpdateDefaultRouteIpv6(interfaceIndex, gateway6, metric: 3);
+                rollbackstate.AppliedGatewayV6 = gateway6;
+                rollbackstate.InterfaceIndex = interfaceIndex;
                 VerifyDefaultRouteOwner(interfaceIndex);
                 return Task.CompletedTask;
 
@@ -190,6 +193,22 @@ namespace RelayNet.Tun.Windows
             {
 
             }
+            try
+            {
+                if (state.InterfaceIndex.HasValue && state.AppliedGatewayV4 is not null)
+                    IpHlpApi.RemoveDefaultRouteIpv4(state.InterfaceIndex.Value, state.AppliedGatewayV4);
+            }
+            catch
+            {
+            }
+            try
+            {
+                if (state.InterfaceIndex.HasValue && state.AppliedGatewayV6 is not null)
+                    IpHlpApi.RemoveDefaultRouteIpv6(state.InterfaceIndex.Value, state.AppliedGatewayV6);
+            }
+            catch
+            {
+            }
         }
         private void ValidateDualStackInputs()
         {
@@ -209,7 +228,9 @@ namespace RelayNet.Tun.Windows
             public string? OldDnsV4 { get; set; }
             public string? OldDnsV6 { get; set; }
             public uint? Ipv4AddressContext { get; set; }
-
+            public int? InterfaceIndex { get; set; }
+            public IPAddress? AppliedGatewayV4 { get; set; }
+            public IPAddress? AppliedGatewayV6 { get; set; }
         }
     }
 }

@@ -35,6 +35,8 @@ namespace RelayNet.Tun.Windows.Native
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int SetIpForwardEntry(ref MIB_IPFORWARDROW pRoute);
+        [DllImport("iphlapi.dll", SetLastError = true)]
+        private static extern int DeleteIpForwardEntry(ref MIB_IPFORWARDROW pRoute);
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int AddIPAddress(uint Address, uint IpMask, int IfIndex, out uint NteContext, out uint Ntenstance);
@@ -86,6 +88,8 @@ namespace RelayNet.Tun.Windows.Native
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int CreateIpForwardEntry2(ref MIB_IPFORWARD_ROW2 row);
+        [DllImport("iphlpapi.dll", SetLastError = true)]
+        private static extern int DeleteIpForwardEntry2(ref MIB_IPFORWARD_ROW2 row);
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int GetBestRoute2(
@@ -166,7 +170,39 @@ namespace RelayNet.Tun.Windows.Native
                 throw new Win32Exception(err,$"CreateIpForwardEntry2 failed interface {interfaceIndex}.");
 
         }
+        internal static void RemoveDefaultRouteIpv4(int interfaceIndex, IPAddress nexthop) {
+            var row = new MIB_IPFORWARDROW
+            {
+                dwForwardDest = ToNetworkOrderUnit32(IPAddress.Any),
+                dwForwardMask = ToNetworkOrderUnit32(IPAddress.Any),
+                dwForwardNextHop = ToNetworkOrderUnit32(nexthop),
+                dwForwardIfIndex = (uint)interfaceIndex
+            };
+            int err = DeleteIpForwardEntry(ref row);
+            if (err != 0 && err != 2 && err != 1168)
+                throw new Win32Exception(err, $"DeleteIpForwardEntry failed for interface {interfaceIndex}.");
+        }
+        internal static void RemoveDefaultRouteIpv6(int interfaceIndex, IPAddress nextHop) {
+            var row = new MIB_IPFORWARD_ROW2
+            {
+                InterfaceIndex = (uint)interfaceIndex, 
+                DestinationPrefixPrefix = new SOCKADDR_INET { Data = new byte[28] }, 
+                DestinationPrefixLength = 0, 
+                Pad1 = new byte[3], 
+                NextHop = new SOCKADDR_INET { Data = new byte[28] }, 
+                SitePrefixLength = 0, 
+                Pad2 = new byte[3]
+            };
+            byte[] b = nextHop.GetAddressBytes();
+            Array.Copy(b, 0, row.NextHop.Data, 8, 16);
+            row.NextHop.Data[0] = 23; // AF_INET6
 
+            int err = DeleteIpForwardEntry2(ref row);
+            if (err != 0 && err != 2 && err != 1168)
+                throw new Win32Exception(err, $"DeleteIpForwardEntry2 failed for interface {interfaceIndex}.");
+
+
+        }
         internal static uint? AddOrUpdateIPv4Address(int interfaceIndex, IPAddress address, IPAddress mask)
         {
            if(address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
