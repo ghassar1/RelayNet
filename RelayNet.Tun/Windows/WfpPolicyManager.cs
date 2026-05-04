@@ -5,6 +5,8 @@ using System.ComponentModel;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Reflection.Metadata.Ecma335;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
@@ -53,6 +55,7 @@ namespace RelayNet.Tun.Windows
                 txStarted = false;
                 SaveManagedFilterIds(createdFilterIds);
                 VerifyEnforcementState(createdFilterIds);
+                VerifyRuntimeEnforcement(context, _config.AdapterName);
                 _state = WfpPolicyState.Enforced;
               
             }
@@ -381,6 +384,7 @@ namespace RelayNet.Tun.Windows
                 value = new WfpNative.FWP_CONDITION_VALUE0_UNION { byteArray16 = valuePtr }
             };
          }
+
         private static void RemoveManagedFilters(IntPtr engine)
         {
             foreach (ulong id in LoadManagedFilterIds())
@@ -440,29 +444,78 @@ namespace RelayNet.Tun.Windows
             if (persisted != createdFilterIds.Count)
                 throw new InvalidOperationException($"WFP enforcement filter persistence mismatch (expected {createdFilterIds.Count}, got {persisted}).");
         }
+        private static void VerifyRuntimeEnforcement(WfpBootstrapContext context, string adapterName)
+        {
+            string relayIp = context.RelayEndpointIps.First();
+            if (!TryTcpConnect(relayIp, 443, TimeSpan.FromSeconds(3)))
+                throw new InvalidOperationException($"Runtime enforcement verification failed: non-tunnel egress appears allowed.");
+
+            if (TryTcpConnect("1.1.1.1", 443, TimeSpan.FromSeconds(2)))
+                throw new InvalidOperationException("Runtime enforcement verification failed: non-tunnel egress appears allowed.");
+
+            int ifIndex = ResolveWintunInterfaceIndex(adapterName);
+            int best4 = IpHlpApi.GetBestInterfaceForDestinationIp4(IPAddress.Parse("8.8.8.8"));
+            int best6 = IpHlpApi.GetBestInterfaceForDestinationIpV6(IPAddress.Parse("2606:4700:4700:1111"));
+            if (best4 != ifIndex || best6 != ifIndex)
+                throw new InvalidOperationException($"Runtime enforcement verification failed: expected tunnel interface {ifIndex}, got v4={best4}, v6={best6}");
+
+        }
+        private static bool TryTcpConnect(string host, int port, TimeSpan timeout)
+        {
+            using var client = new System.Net.Sockets.TcpClient();
+            var connectTask = client.ConnectAsync(host, port);
+            bool completed = connectTask.Wait(timeout);
+            return completed && client.Connected;
+        }
         private static IEnumerable<ulong> LoadManagedFilterIds()
         { 
             if(!File.Exists(FilterStatePath))
                 return Array.Empty<ulong>();
 
             var ids = new List<ulong>();
+            bool malfored = false;
             foreach (string line in File.ReadAllLines(FilterStatePath))
             { 
-                if(ulong.TryParse(line, out ulong parsed))
+                if(string.IsNullOrEmpty(line))
+                    continue;
+                if (ulong.TryParse(line, out ulong parsed))
                     ids.Add(parsed);
+                else
+                    malfored = true;
+            }
+            if (malfored || ids.Count != ids.Distinct().Count())
+            {
+                DeleteManagedFilterIdFile();
+                return Array.Empty<ulong>();
             }
             return ids;
         }
 
         private static void SaveManagedFilterIds(IEnumerable<ulong> ids)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilterStatePath)!);
+            EnsureStateDirectoryAcl(Path.GetDirectoryName(FilterStatePath)!);
             File.WriteAllLines(FilterStatePath, ids.Select(id => id.ToString()));
         }
         private static void DeleteManagedFilterIdFile()
         { 
             if(File.Exists(FilterStatePath))
                 File.Delete(FilterStatePath);
+        }
+        private static void EnsureStateDirectoryAcl(string path) { 
+                Directory.CreateDirectory(path);
+            if (!OperatingSystem.IsWindows())
+                return;  
+
+            var dirInfo = new DirectoryInfo(path);
+            DirectorySecurity security = dirInfo.GetAccessControl();
+            var admins = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+            var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.SetOwner(admins);
+            security.AddAccessRule(new FileSystemAccessRule(admins, FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(system, FileSystemRights.FullControl, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            dirInfo.SetAccessControl(security);
         }
         private static void AbortTransactionBestEffort(IntPtr engine)
         {
